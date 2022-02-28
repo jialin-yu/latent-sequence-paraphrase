@@ -1,0 +1,5 @@
+.data/
+env/
+playground/
+model/
+**/__pycache__/
