@@ -28,7 +28,8 @@ class Transformer(nn.Module):
         
         self.trg_encoder = Encoder(configs)
         self.src_decoder = Decoder(configs)
-
+        
+        # the loss should return in per batch
         self.loss = nn.CrossEntropyLoss(ignore_index=self.pad_id, reduction="none")
 
     def _get_mask(self, src, trg):
@@ -121,20 +122,36 @@ class Transformer(nn.Module):
 
     def _reconstruct_error(self, src, trg, hard=False, trg_mask=None):
         '''
-        Calculate cross entropy based on logits and trg
-        src: (B, T, V)
-        trg: (B, T)
+        Calculate cross entropy based on src and trg
+        src: (B, T, V)  xxxx <eos>
+        trg: (B, T) xxxx <eos>
+        trg_mask: (B, T) xxxx <eos>
 
         Returns: loss in (batch_size)
         '''
 
         if hard:
+            _, S, V = src.size()
             log_p = F.log_softmax(src, dim=2)
-            mask = mask[:, 1:]
-            loss = -((log_p * trg).sum(dim=2) * (1. - mask)).sum(dim=1) 
+            loss = -((log_p * F.one_hot(trg, V)).sum(2) * (1 - trg_mask.int())).sum(1)
+            
+            loss_ = self.loss(src.contiguous().view(-1, V), trg.contiguous().view(-1)) # B*S
+            loss_ = loss_.contiguous().view(-1, S).sum(1)
+
+            print(torch.mean(loss))
+            print(torch.mean(loss_))
+            
+            # loss = - torch.mean((log_p * trg.unsqueeze(2)) * (1 - trg_mask.int())), dim=1)
+            
+
+            # log_p = F.log_softmax(src.contiguous().view(-1, V), dim=1)
+            # unmask_loss = -(log_p * trg.contiguous().view(-1).unsqueeze(1)).sum(1).contiguous().view(B, -1)
+            # loss = (unmask_loss * (1. - trg_mask.int())).sum(1)
+            # loss = -((log_p * trg.contiguous().view(-1).unsqueeze(1)) * (1. - trg_mask.int().contiguous().view(-1))).contiguous().view(-1, S).sum(dim=1) 
         else: 
-            batch_size, seq_len, V = src.size()
-            loss = self.loss(src.contiguous().view(-1, V), trg.contiguous().view(-1))
+            _, S, V = src.size()
+            loss = self.loss(src.contiguous().view(-1, V), trg.contiguous().view(-1)) # B*S
+            loss = loss.contiguous().view(-1, S).sum(1)
 
         return loss
 

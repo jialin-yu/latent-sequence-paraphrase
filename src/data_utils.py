@@ -1,12 +1,12 @@
 '''
-Read raw data and format according to "Paraphrase Generation with Latent Bag of Words"
-https://proceedings.neurips.cc/paper/2019/file/5e2b66750529d8ae895ad2591118466f-Paper.pdf
+Data pre-/post- processing functions
 
 Contains two datasets:
 * MSCOCO (Lin et. al. 2014)] (http://cocodataset.org/)
 * Quora (https://quoradata.quora.com/First-Quora-Dataset-Release-Question-Pairs)
 
-26TH JAN 2022
+28TH FEB 2022
+BY Jialin Yu
 '''
 
 import json
@@ -57,8 +57,6 @@ def process_mscoco(file_path_read):
         sent = d["caption"]
         paraphrases[im].append(sent)
     sentence_sets = [paraphrases[im] for im in paraphrases]
-    
-    print(f'Origional data contains {len(sentence_sets)} sets which is {2*len(sentence_sets)} pairs.')
 
     sentence_pairs = []
     for l in tqdm(sentence_sets):
@@ -67,8 +65,8 @@ def process_mscoco(file_path_read):
         q1, q2, q3, q4, q5 = l
         sentence_pairs.append((tokenizer(q1), tokenizer(q2)))
         sentence_pairs.append((tokenizer(q3), tokenizer(q4)))    
-    
-    print(f'Read {len(sentence_pairs)} pairs...')
+
+    print(f'Read {len(sentence_pairs)} pairs from original {len(sentence_sets)} sets ({2*len(sentence_sets)} pairs).')
     return sentence_pairs
 
 #################################################
@@ -153,16 +151,3 @@ def calculate_bound(tokenized_test_pairs, bleu_baseline=False, rouge_baseline=Fa
         references = [stringify(s[1]) for s in tokenized_test_pairs]
         rouge = rouge_metric.compute(predictions=predictions, references=references)
         print(f'ROUGE-1 score is {rouge["rouge1"].mid.fmeasure}, ROUGE-2 score is {rouge["rouge2"].mid.fmeasure}, and ROUGE-L score is {rouge["rougeL"].mid.fmeasure}.')
-
-#########################################################
-################### Create Vocabulary  ##################
-#########################################################
-
-
-#########################################################
-################### Indexing Vocabulary  ################
-#########################################################
-
-#########################################################
-################### Get DataLoader       ################
-#########################################################

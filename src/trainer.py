@@ -22,11 +22,9 @@ class Trainer(object):
         if self.configs.data == 'quora':
             train_data, valid_data, test_data, vocab = self._build_quora_data(self.configs.max_vocab, 
                                         self.configs.train_size, self.configs.valid_size, self.configs.test_size)
-            self.configs.max_len = self.configs.quora_max_len
         elif self.configs.data == 'mscoco':
             train_data, valid_data, test_data, vocab = self._build_mscoco_data(self.configs.max_vocab, 
                                         self.configs.train_size, self.configs.valid_size, self.configs.test_size)
-            self.configs.max_len = self.configs.quora_max_len
         else:
             print(f'Dataset: {configs.data} not defined.')
             return
@@ -45,23 +43,21 @@ class Trainer(object):
         model_dir = self.configs.lm_dir
         max_epoch = self.configs.lm_max_epoch
         lr = self.configs.lm_lr
-        grad_clip = self.configs.gradient_clip
+        grad_clip = self.configs.lm_gc
         seed = self.configs.seed
-        hard = self.configs.lm_hard
 
+        print(f'Set LM experiment seed as: {seed}')
         self._set_experiment_seed(seed)
 
         self.model.prior.apply(self._xavier_initialize)
         optimizer = torch.optim.Adam(self.model.prior.parameters(), lr = lr)
         
-        EXP_START_TIME = time.time()
+        EXP_START = time.time()
         best_valid_loss = float('inf')
         for epoch in range(max_epoch):
-            start_time = time.time()
             train_loss = self._train_lm(self.model.prior, self.train_data, optimizer, grad_clip)
             valid_loss = self._evaluate_lm(self.model.prior, self.valid_data)
-            elapsed = time.time() - start_time 
-            print(f'Epoch {epoch + 1}/{max_epoch} training done in {elapsed}s.')
+            print(f'{"-"*20} Epoch {epoch + 1}/{max_epoch} training done {"-"*20}')
             if valid_loss < best_valid_loss:
                 best_valid_loss = valid_loss 
                 self._save_model(self.model.prior, model_dir, seed)
@@ -69,11 +65,40 @@ class Trainer(object):
         
         print('Retrieve best model for testing')
         self._load_model(self.model.prior, model_dir, seed)
+        self.model.prior.to(self.device)
         valid_loss = self._evaluate_lm(self.model.prior, self.test_data)
-        print(f'Language model done in {time.time() - EXP_START_TIME}s.')
+        print(f'LM experiment done in {time.time() - EXP_START}s.')
 
-    def train(self, **kwags):
-        pass
+    def main_vae(self):
+        lm_dir = self.configs.lm_dir
+        model_dir = self.configs.vae_dir
+        max_epoch = self.configs.lm_max_epoch
+        lr = self.configs.lm_lr
+        grad_clip = self.configs.lm_gc
+        seed = self.configs.seed
+
+        print(f'Set LM experiment seed as: {seed}')
+        self._set_experiment_seed(seed)
+
+        self.model.prior.apply(self._xavier_initialize)
+        optimizer = torch.optim.Adam(self.model.prior.parameters(), lr = lr)
+        
+        EXP_START = time.time()
+        best_valid_loss = float('inf')
+        for epoch in range(max_epoch):
+            train_loss = self._train_lm(self.model.prior, self.train_data, optimizer, grad_clip)
+            valid_loss = self._evaluate_lm(self.model.prior, self.valid_data)
+            print(f'{"-"*20} Epoch {epoch + 1}/{max_epoch} training done {"-"*20}')
+            if valid_loss < best_valid_loss:
+                best_valid_loss = valid_loss 
+                self._save_model(self.model.prior, model_dir, seed)
+                print(f'Save model in epoch {epoch + 1}.')
+        
+        print('Retrieve best model for testing')
+        self._load_model(self.model.prior, model_dir, seed)
+        self.model.prior.to(self.device)
+        valid_loss = self._evaluate_lm(self.model.prior, self.test_data)
+        print(f'LM experiment done in {time.time() - EXP_START}s.')
 
     def train_mix(self, **kwags):
         max_epoch = max(self.configs.lm_max_epoch, self.configs.vae_max_epoch)
@@ -126,7 +151,7 @@ class Trainer(object):
         epoch_loss = 0
         start_time = time.time()
         # dynamic log interval
-        log_inter = len(dataloader) // 10
+        log_inter = len(dataloader) // 5
         for idx, (src, trg) in enumerate(tqdm(dataloader)):
             optimizer.zero_grad()
             src_m, trg_m, memory_m, src_kp_m, trg_kp_m = self.model._get_mask(src[:, :-1], trg)
@@ -142,7 +167,10 @@ class Trainer(object):
             optimizer.step()
             epoch_loss += batch_loss.item()
             if idx % log_inter == 0 and idx > 0:
-                print(f'| Batches: {idx}/{len(dataloader)} | Running Loss: {epoch_loss/(idx+1)} | PPL: {math.exp(epoch_loss/(idx+1))} |')
+                try:
+                    print(f'| Batches: {idx}/{len(dataloader)} | Running Loss: {epoch_loss/(idx+1)} | PPL: {math.exp(epoch_loss/(idx+1))} |')
+                except: 
+                    print(f'| Batches: {idx}/{len(dataloader)} | Running Loss: {epoch_loss/(idx+1)} | PPL: {float("inf")} |')
         elapsed = time.time() - start_time
         print(f'Epoch training time is: {elapsed}s.')
         return epoch_loss / len(dataloader)
@@ -162,7 +190,10 @@ class Trainer(object):
             batch_loss = torch.mean(loss)
             epoch_loss += batch_loss.item()
             
-        print(f'| Total Loss: {epoch_loss/(idx+1)} | PPL: {math.exp(epoch_loss/(idx+1))} |')
+        try:
+            print(f'| Total Loss: {epoch_loss/(idx+1)} | PPL: {math.exp(epoch_loss/(idx+1))} |')
+        except:
+            print(f'| Total Loss: {epoch_loss/(idx+1)} | PPL: {float("inf")} |') 
         elapsed = time.time() - start_time
         print(f'Epoch Evaluation time is: {elapsed}s.')
         return epoch_loss / len(dataloader)

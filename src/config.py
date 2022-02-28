@@ -22,7 +22,7 @@ class Configs(object):
         self.quora_min_freq = 25
         self.mscoco_min_freq = 20
 
-        self.max_len = None
+        self.max_len = 100
 
         self.batch_size = 32
         self.vocab_size = None
