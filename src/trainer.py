@@ -60,11 +60,11 @@ class Trainer(object):
             print(f'{"-"*20} Epoch {epoch + 1}/{max_epoch} training done {"-"*20}')
             if valid_loss < best_valid_loss:
                 best_valid_loss = valid_loss 
-                self._save_model(self.model.prior, model_dir, seed)
+                self._save_model(self.model.prior, model_dir, seed, self.configs.hard)
                 print(f'Save model in epoch {epoch + 1}.')
         
         print('Retrieve best model for testing')
-        self._load_model(self.model.prior, model_dir, seed)
+        self._load_model(self.model.prior, model_dir, seed, self.configs.hard)
         self.model.prior.to(self.device)
         valid_loss = self._evaluate_lm(self.model.prior, self.test_data)
         print(f'LM experiment done in {time.time() - EXP_START}s.')
@@ -111,15 +111,18 @@ class Trainer(object):
         pass
 
     def _batchify(self, batch):
-        src_list, trg_list, src_lens = [], [], []
-        for (src_idx, trg_idx) in batch:
+        src_list, trg_list, src_list_ = [], [], []
+        for (src_idx, trg_idx, src_idx_) in batch:
             src = torch.tensor([self.configs.bos_id] + src_idx + [self.configs.eos_id], dtype=torch.int64)
             trg = torch.tensor([self.configs.bos_id] + trg_idx + [self.configs.eos_id], dtype=torch.int64)
+            src_ = torch.tensor([self.configs.bos_id] + src_idx_ + [self.configs.eos_id], dtype=torch.int64)
             src_list.append(src)
             trg_list.append(trg)
+            src_list_.append(src_)
         src_ = pad_sequence(src_list, batch_first=True, padding_value=self.configs.pad_id)
         trg_ = pad_sequence(trg_list, batch_first=True, padding_value=self.configs.pad_id)
-        return src_.to(self.device), trg_.to(self.device)
+        src__ = pad_sequence(src_list_, batch_first=True, padding_value=self.configs.pad_id)
+        return src_.to(self.device), trg_.to(self.device), src__.to(self.device)
 
     def _build_quora_data(self, max_vocab, train_size, valid_size, test_size):
         sentence_pairs = process_quora(self.configs.quora_fp)
@@ -146,31 +149,49 @@ class Trainer(object):
         sentence_pairs_test = process_mscoco(source_file_path_test)
     
 
-    def _train_lm(self, lm_model, dataloader, optimizer, grad_clip):
-        lm_model.train()
+    def _train_lm(self, model, dataloader, optimizer, grad_clip):
+        model.train()
         epoch_loss = 0
         start_time = time.time()
-        # dynamic log interval
+        
         log_inter = len(dataloader) // 5
-        for idx, (src, trg) in enumerate(tqdm(dataloader)):
+        for idx, (src, trg, src_) in enumerate(tqdm(dataloader)):
             optimizer.zero_grad()
-            src_m, trg_m, memory_m, src_kp_m, trg_kp_m = self.model._get_mask(src[:, :-1], trg)
-            output = lm_model.hard_lm(src[:, :-1], src_m, src_kp_m)
-            if self.configs.lm_hard:
-                loss = self.model._reconstruct_error(output, src[:, :-1], True, src_kp_m)
+            if self.configs.unsupervised:
+                src_m, trg_m, memory_m, src_kp_m, trg_kp_m = self.model._get_mask(src[:, :-1], trg)        
+                output = model.hard_lm(src[:, :-1], src_m, src_kp_m)           
+
+                if self.configs.hard:
+                    b_loss = self.model._batch_reconstruct_error(output, src[:, 1:], True, src_kp_m)
+                    i_loss = self.model._instance_reconstruct_error(output, src[:, 1:], True, src_kp_m)
+                else:
+                    b_loss = self.model._batch_reconstruct_error(output, src[:, 1:])
+                    i_loss = self.model._instance_reconstruct_error(output, src[:, 1:])
             else:
-                loss = self.model._reconstruct_error(output, src[:, :-1])
+                src_m, trg_m, memory_m, src_kp_m, trg_kp_m = self.model._get_mask(trg[:, :-1], trg)        
+                output = model.hard_lm(trg[:, :-1], src_m, src_kp_m)
+
+                if self.configs.hard:
+                    b_loss = self.model._batch_reconstruct_error(output, trg[:, 1:], True, src_kp_m)
+                    i_loss = self.model._instance_reconstruct_error(output, trg[:, 1:], True, src_kp_m)
+                else:
+                    b_loss = self.model._batch_reconstruct_error(output, trg[:, 1:])
+                    i_loss = self.model._instance_reconstruct_error(output, trg[:, 1:])  
             
-            batch_loss = torch.mean(loss)
-            batch_loss.backward()
-            torch.nn.utils.clip_grad_norm_(lm_model.parameters(), grad_clip)
+            b_loss = torch.mean(b_loss)
+            i_loss = torch.mean(i_loss)
+
+            if self.configs.batch_loss: 
+                b_loss.backward()
+            else:
+                i_loss.backward()
+
+            torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
             optimizer.step()
-            epoch_loss += batch_loss.item()
+
+            epoch_loss += i_loss.item()
             if idx % log_inter == 0 and idx > 0:
-                try:
-                    print(f'| Batches: {idx}/{len(dataloader)} | Running Loss: {epoch_loss/(idx+1)} | PPL: {math.exp(epoch_loss/(idx+1))} |')
-                except: 
-                    print(f'| Batches: {idx}/{len(dataloader)} | Running Loss: {epoch_loss/(idx+1)} | PPL: {float("inf")} |')
+                print(f'| Batches: {idx}/{len(dataloader)} | Running Loss: {epoch_loss/(idx+1)} | PPL: {math.exp(epoch_loss/(idx+1))} |')
         elapsed = time.time() - start_time
         print(f'Epoch training time is: {elapsed}s.')
         return epoch_loss / len(dataloader)
@@ -179,23 +200,64 @@ class Trainer(object):
         lm_model.eval()
         epoch_loss = 0
         start_time = time.time()
-        for idx, (src, trg) in enumerate(tqdm(dataloader)):
-            src_m, trg_m, memory_m, src_kp_m, trg_kp_m = self.model._get_mask(src[:, :-1], trg)
-            output = lm_model.hard_lm(src[:, :-1], src_m, src_kp_m)
-            if self.configs.lm_hard:
-                loss = self.model._reconstruct_error(output, src[:, :-1], True, src_kp_m)
+        for idx, (src, trg, src_) in enumerate(tqdm(dataloader)):
+            if self.configs.unsupervised:
+                src_m, trg_m, memory_m, src_kp_m, trg_kp_m = self.model._get_mask(src[:, :-1], trg)
+                output = lm_model.hard_lm(src[:, :-1], src_m, src_kp_m)
+                if self.configs.hard:
+                    loss = self.model._instance_reconstruct_error(output, src[:, 1:], True, src_kp_m)
+                else:
+                    loss = self.model._instance_reconstruct_error(output, src[:, 1:])
             else:
-                loss = self.model._reconstruct_error(output, src[:, :-1])
+                src_m, trg_m, memory_m, src_kp_m, trg_kp_m = self.model._get_mask(trg[:, :-1], trg)
+                output = lm_model.hard_lm(trg[:, :-1], src_m, src_kp_m)
+                if self.configs.hard:
+                    loss = self.model._instance_reconstruct_error(output, trg[:, 1:], True, src_kp_m)
+                else:
+                    loss = self.model._instance_reconstruct_error(output, trg[:, 1:])
             
             batch_loss = torch.mean(loss)
             epoch_loss += batch_loss.item()
             
-        try:
-            print(f'| Total Loss: {epoch_loss/(idx+1)} | PPL: {math.exp(epoch_loss/(idx+1))} |')
-        except:
-            print(f'| Total Loss: {epoch_loss/(idx+1)} | PPL: {float("inf")} |') 
+        print(f'| Total Loss: {epoch_loss/(idx+1)} | PPL: {math.exp(epoch_loss/(idx+1))} |')
         elapsed = time.time() - start_time
         print(f'Epoch Evaluation time is: {elapsed}s.')
+        return epoch_loss / len(dataloader)
+
+    def _train_vae(self, model, dataloader, optimizer, grad_clip):
+        model.train()
+        epoch_loss = 0
+        start_time = time.time()
+        
+        log_inter = len(dataloader) // 5
+        for idx, (src, trg) in enumerate(tqdm(dataloader)):
+            optimizer.zero_grad()
+            src_m, trg_m, memory_m, src_kp_m, trg_kp_m = self.model._get_mask(src[:, :-1], trg)        
+            output = model.hard_lm(src[:, :-1], src_m, src_kp_m)
+            
+            if self.configs.hard:
+                b_loss = self.model._batch_reconstruct_error(output, src[:, :-1], True, src_kp_m)
+                i_loss = self.model._instance_reconstruct_error(output, src[:, :-1], True, src_kp_m)
+            else:
+                b_loss = self.model._batch_reconstruct_error(output, src[:, :-1])
+                i_loss = self.model._instance_reconstruct_error(output, src[:, :-1])
+            
+            b_loss = torch.mean(b_loss)
+            i_loss = torch.mean(i_loss)
+
+            if self.configs.batch_loss: 
+                b_loss.backward()
+            else:
+                i_loss.backward()
+
+            torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
+            optimizer.step()
+
+            epoch_loss += i_loss.item()
+            if idx % log_inter == 0 and idx > 0:
+                print(f'| Batches: {idx}/{len(dataloader)} | Running Loss: {epoch_loss/(idx+1)} | PPL: {math.exp(epoch_loss/(idx+1))} |')
+        elapsed = time.time() - start_time
+        print(f'Epoch training time is: {elapsed}s.')
         return epoch_loss / len(dataloader)
     
     def _xavier_initialize(self, model):
@@ -205,11 +267,17 @@ class Trainer(object):
     def _count_parameters(self, model):
         return sum(p.numel() for p in model.parameters() if p.requires_grad)
     
-    def _save_model(self, model, model_dir, seed):
-        torch.save(model.state_dict(), f'{model_dir}/SEED_{seed}.pt')
+    def _save_model(self, model, model_dir, seed, hard):
+        if hard:
+            torch.save(model.state_dict(), f'{model_dir}/SEED_{seed}_H.pt')
+        else:
+            torch.save(model.state_dict(), f'{model_dir}/SEED_{seed}_S.pt')
     
-    def _load_model(self, model, model_dir, seed):
-        model.load_state_dict(torch.load(f'{model_dir}/SEED_{seed}.pt'))
+    def _load_model(self, model, model_dir, seed, hard):
+        if hard:
+            model.load_state_dict(torch.load(f'{model_dir}/SEED_{seed}_H.pt'))
+        else:
+            model.load_state_dict(torch.load(f'{model_dir}/SEED_{seed}_S.pt'))
 
     def _set_experiment_seed(self, seed):
         random.seed(seed)

@@ -59,16 +59,17 @@ class Transformer(nn.Module):
         https://arxiv.org/pdf/1308.3432.pdf
         hard return in categorical variable format, soft return in categorical parameter format 
         if gumbel_max, temperature is required
+        
         INPUT:
-        src (B, S)
-        trg (B, T)
+        src (B, S) <bos> x <eos>
+        trg (B, T) <bos> y <eos>
 
         RETURN: 
-        (B, T, V)
+        trg* (B, T, V) <bos> y <eos>
         '''
         B, T = trg.size()
         src_m, _, _, src_kp_m, _ = self._get_mask(src, trg)
-        enc_src = self.src_encoder(src, src_m, src_kp_m)
+        enc_src = encoder(src, src_m, src_kp_m)
         shape = enc_src.size()
         ind = torch.LongTensor([self.bos_id]).expand(shape[0], shape[1]).unsqueeze(1) # B, S, 1
         dec_head = torch.zeros_like(enc_src).view(-1, shape[-1])
@@ -103,9 +104,10 @@ class Transformer(nn.Module):
     def encode_and_decode(self, encoder, decoder, src, trg, encode_hard=True):
         '''
         INPUT:
-        src (B, S) if encode_hard == Ture
+        src (B, S) if encode_hard == Ture 
         src (B, S, V) if not encode_hard == False, must be normalised
-        trg: (B, T)
+        src <bos> x <eos>
+        trg (B, T) <bos> y <eos>
 
         Return: (B, T-1, V) in normalised form
         '''
@@ -120,44 +122,90 @@ class Transformer(nn.Module):
         return dec_out
 
 
-    def _reconstruct_error(self, src, trg, hard=False, trg_mask=None):
+    def _batch_reconstruct_error(self, src, trg, hard=False, trg_mask=None):
         '''
         Calculate cross entropy based on src and trg
         src: (B, T, V)  xxxx <eos>
         trg: (B, T) xxxx <eos>
         trg_mask: (B, T) xxxx <eos>
 
-        Returns: loss in (batch_size)
+        Returns: loss in (B)
         '''
 
         if hard:
             _, S, V = src.size()
-            log_p = F.log_softmax(src, dim=2)
+            src_ = straight_through_softmax(src)
+            log_p = F.log_softmax(src_, dim=2)
             loss = -((log_p * F.one_hot(trg, V)).sum(2) * (1 - trg_mask.int())).sum(1)
-            
-            loss_ = self.loss(src.contiguous().view(-1, V), trg.contiguous().view(-1)) # B*S
-            loss_ = loss_.contiguous().view(-1, S).sum(1)
-
-            print(torch.mean(loss))
-            print(torch.mean(loss_))
-            
-            # loss = - torch.mean((log_p * trg.unsqueeze(2)) * (1 - trg_mask.int())), dim=1)
-            
-
-            # log_p = F.log_softmax(src.contiguous().view(-1, V), dim=1)
-            # unmask_loss = -(log_p * trg.contiguous().view(-1).unsqueeze(1)).sum(1).contiguous().view(B, -1)
-            # loss = (unmask_loss * (1. - trg_mask.int())).sum(1)
-            # loss = -((log_p * trg.contiguous().view(-1).unsqueeze(1)) * (1. - trg_mask.int().contiguous().view(-1))).contiguous().view(-1, S).sum(dim=1) 
         else: 
             _, S, V = src.size()
             loss = self.loss(src.contiguous().view(-1, V), trg.contiguous().view(-1)) # B*S
             loss = loss.contiguous().view(-1, S).sum(1)
 
         return loss
+    
+    def _instance_reconstruct_error(self, src, trg, hard=False, trg_mask=None):
+        '''
+        Calculate cross entropy based on src and trg
+        src: (B, T, V)  xxxx <eos>
+        trg: (B, T) xxxx <eos>
+        trg_mask: (B, T) xxxx <eos>
 
-    def _log_probability(self, src, trg, hard=False, trg_mask=None):
+        Returns: loss in (B*T)
         '''
-        calculate soft/hard log probability
-        return : (batch_size)
+
+        if hard:
+            _, S, V = src.size()
+            src_ = straight_through_softmax(src)
+            loss = self.loss(src_.contiguous().view(-1, V), trg.contiguous().view(-1)) 
+        else: 
+            _, S, V = src.size()
+            loss = self.loss(src.contiguous().view(-1, V), trg.contiguous().view(-1)) 
+        
+        return loss
+
+    def _batch_cross_entropy(self, q, p, trg_mask, hard=False):
         '''
-        return -self._reconstruct_error(src, trg, hard=False, trg_mask=None)
+        Calculate cross entropy for q and p 
+        -E_{q}[\log(p)]
+        q: (B, T, V) xxxx <eos>
+        p: (B, T, V)  xxxx <eos>
+        trg_mask: (B, T) xxxx <eos>
+
+        Returns: loss in (B)
+        '''
+
+        if hard:
+            q_ = straight_through_softmax(q)
+            p_ = straight_through_softmax(p)
+            log_p = F.log_softmax(p_, dim=2)
+            loss = -((log_p * q_).sum(2) * (1 - trg_mask.int())).sum(1)
+        else:
+            log_p = F.log_softmax(p, dim=2)
+            loss = -((log_p * q).sum(2) * (1 - trg_mask.int())).sum(1)
+
+        return loss
+
+    def _instance_rcross_entropy(self, q, p, trg_mask, hard=False):
+        '''
+        Calculate cross entropy for q and p 
+        -E_{q}[\log(p)]
+        q: (B, T, V) xxxx <eos>
+        p: (B, T, V)  xxxx <eos>
+        trg_mask: (B, T) xxxx <eos>
+
+        Returns: loss in (B*T)
+        '''
+
+        _, S, V = q.size()
+
+        if hard:
+            q_ = straight_through_softmax(q)
+            p_ = straight_through_softmax(p)
+            log_p = F.log_softmax(p_.c, dim=2)
+            loss = -(log_p * q_).sum(2).contiguous().view(-1) * (1 - trg_mask.int()).contiguous().view(-1)
+        else:
+            log_p = F.log_softmax(p.c, dim=2)
+            loss = -(log_p * q).sum(2).contiguous().view(-1) * (1 - trg_mask.int()).contiguous().view(-1)
+
+        return loss

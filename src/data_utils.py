@@ -10,9 +10,10 @@ BY Jialin Yu
 '''
 
 import json
+from webbrowser import get
 from datasets import load_metric
 import numpy as np
-from pipeline import tokenizer, token_to_index, stringify
+from pipeline import tokenizer, token_to_index, stringify, get_pseudo
 from tqdm import tqdm
 
 from torchtext.vocab import vocab
@@ -36,7 +37,7 @@ def process_quora(file_path_read):
             continue
         q1, q2, is_duplicate = l.split('\t')[3:]         
         if int(is_duplicate) == 1:
-            sentence_pairs.append((tokenizer(q1), tokenizer(q2)))
+            sentence_pairs.append((tokenizer(q1), tokenizer(q2), get_pseudo(q1)))
 
     print(f'Read {len(sentence_pairs)} pairs from original {len(lines)} pairs.')
     return sentence_pairs  
@@ -63,8 +64,8 @@ def process_mscoco(file_path_read):
         if len(l) != 5: # ignore error format
             continue
         q1, q2, q3, q4, q5 = l
-        sentence_pairs.append((tokenizer(q1), tokenizer(q2)))
-        sentence_pairs.append((tokenizer(q3), tokenizer(q4)))    
+        sentence_pairs.append((tokenizer(q1), tokenizer(q2), get_pseudo(q1)))
+        sentence_pairs.append((tokenizer(q3), tokenizer(q4), get_pseudo(q3)))    
 
     print(f'Read {len(sentence_pairs)} pairs from original {len(sentence_sets)} sets ({2*len(sentence_sets)} pairs).')
     return sentence_pairs
@@ -75,7 +76,7 @@ def process_mscoco(file_path_read):
 
 def calculate_stats(sentence_pair):
     tmp = []
-    for (q1, q2) in tqdm(sentence_pair):
+    for (q1, q2, _) in tqdm(sentence_pair):
         tmp.append(len(q1))
         tmp.append(len(q2))
     np_arr = np.array(tmp)
@@ -89,7 +90,7 @@ def create_vocab(sentence_pair, min_freq=1, max_size=None):
     MIN_FREQUENT = min_freq
     print(f'Creating vocab object ...')
     counter = Counter()
-    for (q1, q2) in tqdm(sentence_pair):
+    for (q1, q2, _) in tqdm(sentence_pair):
         counter.update(q1)
         counter.update(q2)
     
@@ -121,12 +122,12 @@ def normalise(train_and_valid, test, vocab, cutoff):
     print(f'Normalising data...')
 
     train_valid_temp = []
-    for pair in tqdm(train_and_valid):
-        train_valid_temp.append((token_to_index(pair[0][:cutoff], vocab), token_to_index(pair[1][:cutoff], vocab)))
+    for q1, q2, q1_ in tqdm(train_and_valid):
+        train_valid_temp.append((token_to_index(q1[:cutoff], vocab), token_to_index(q2[:cutoff], vocab), token_to_index(q1_[:cutoff], vocab)))
     
     test_temp = []
-    for pair in tqdm(test):
-        test_temp.append((token_to_index(pair[0], vocab), token_to_index(pair[1], vocab)))
+    for q1, q2, q1_ in tqdm(test):
+        test_temp.append((token_to_index(q1, vocab), token_to_index(q2, vocab), token_to_index(q1_, vocab)))
     return train_valid_temp, test_temp
 
 #################################################
