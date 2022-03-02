@@ -77,7 +77,7 @@ class Transformer(nn.Module):
         dec_head = dec_head.view(*shape)[:, 0, :].unsqueeze(1) # B,1, V
         dec_temp = dec_head
 
-        for index in range(T-1):
+        for i in range(T-1):
             if hard:
                 if gumbel_max:
                     dec_out = decoder.soft_decode(dec_temp, enc_src)
@@ -186,7 +186,7 @@ class Transformer(nn.Module):
 
         return loss
 
-    def _instance_rcross_entropy(self, q, p, trg_mask, hard=False):
+    def _instance_cross_entropy(self, q, p, trg_mask, hard=False):
         '''
         Calculate cross entropy for q and p 
         -E_{q}[\log(p)]

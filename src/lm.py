@@ -35,12 +35,13 @@ class LanguageModel(nn.Module):
     def hard_lm(self, x, x_mask=None, x_key_padding_mask=None):
         '''
         INPUT: 
-        x (B, S)
-        x_msk: (S, S)
-        x_key_padding_mask: (B, S)
+        x (B, S) <bos> x
+        x_msk: (S, S) <bos> x
+        x_key_padding_mask: (B, S) <bos> x
         
         RETURN: 
-        output (B, S, V) in normalised form
+        output (B, S, V) in normalised form 
+        output x <eos>
         '''
         batch_size, seq_len = x.size()
         # pos: batch, seq_len

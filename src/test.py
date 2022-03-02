@@ -31,7 +31,13 @@ def main():
         '-e', '--unsupervised', type=bool, default=False)
     
     parser.add_argument(
-        '-plm', '--pretrain_lm', type=bool, default=True)
+        '-gum', '--gumbel_max', type=bool, default=False)
+    
+    parser.add_argument(
+        '-plm', '--use_pretrain_lm', type=bool, default=True)
+
+    parser.add_argument(
+        '-plm', '--use_pseudo', type=bool, default=False)
     
 
     # LM experiment

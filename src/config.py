@@ -29,6 +29,12 @@ class Configs(object):
 
         self.inf = float('inf')
 
+        self.lm_id = None
+
         for name, value in kwargs.items():
             setattr(self, name, value)
+
+        if self.lm_dir:
+            lm_name = f'seed_{self.seed}_hard_{self.hard}_batchloss_{self.batch_loss}_unsupervised_{self.unsupervised}_pseudo_{self.use_pseudo}'
+            self.lm_id = lm_name
 
