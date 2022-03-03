@@ -25,7 +25,9 @@ def main():
     parser.add_argument(
         '-loss', '--batch_loss', type=bool, default=True)
     parser.add_argument(
-        '-hard', '--hard', type=bool, default=False)
+        '-lh', '--latent_hard', type=bool, default=False)
+    parser.add_argument(
+        '-hl', '--hard_loss', type=bool, default=False)
 
     parser.add_argument(
         '-e', '--unsupervised', type=bool, default=False)
@@ -37,7 +39,7 @@ def main():
         '-plm', '--use_pretrain_lm', type=bool, default=True)
 
     parser.add_argument(
-        '-plm', '--use_pseudo', type=bool, default=False)
+        '-up', '--use_pseudo', type=bool, default=False)
     
 
     # LM experiment
@@ -48,7 +50,15 @@ def main():
     parser.add_argument(
         '-lmlr', '--lm_lr', type=int, default=1e-4)
     parser.add_argument(
-        '-gc', '--lm_gc', type=int, default=0.01)
+        '-gc', '--gc', type=int, default=0.01)
+
+    parser.add_argument(
+        '-vaedir', '--vae_dir', type=str, default='../model/vae/')
+    parser.add_argument(
+        '-vaeme', '--vae_max_epoch', type=int, default=10)
+    parser.add_argument(
+        '-vaelr', '--vae_lr', type=int, default=1e-4)
+
     
     parser.add_argument(
         '-hd', '--hid_dim', type=int, default=512)
@@ -67,7 +77,8 @@ def main():
 
     configs = Configs(**vars(args))
     interface = Trainer(configs)
-    interface.main_lm()
+    # interface.main_lm()
+    interface.main_vae()
 
 
 if __name__ == "__main__":

@@ -13,35 +13,29 @@ class Encoder(nn.Module):
         self.dropout = nn.Dropout(configs.dropout)
         self.register_buffer('scale', torch.sqrt(torch.FloatTensor([configs.hid_dim])))
 
-    def soft_encode(self, src_prob):
+    def encode(self, x, x_m=None, x_pm=None, x_hard=False):
         '''
         INPUT: 
-        src_prob (B, S, V) in normalised form
         
-        RETURN: 
-        output (B, S, E)
-        '''
-        batch_size, seq_len, _ = src_prob.size()
-        pos = torch.arange(0, seq_len).unsqueeze(0).repeat(batch_size, 1).to(self.device)
-        src = self.dropout((src_prob @ self.tok_emb.weight * self.scale) + self.pos_emb(pos))
-        output = self.encoder(src)  
-        
-        return output
+        x (B, S, V) if hard == False; <bos> x <eos>
+        x (B, S) if hard == True; <bos> x <eos>
+        x_m (S, S) == None 
+        x_pm (B, S)
 
-    def hard_encode(self, src, src_mask=None, src_key_padding_mask=None):
-        '''
-        INPUT: 
-        src (B, S)
-        src_msk: (S, S)
-        src_key_padding_mask: (B, S)
-        
         RETURN: 
-        output (B, S, E)
+
+        x_ (B, S, H); <bos> x_ <eos> 
         '''
-        batch_size, src_len = src.size()
-        # pos: batch, seq_len
-        pos = torch.arange(0, src_len).unsqueeze(0).repeat(batch_size, 1).to(self.device)
-        # src: batch, seq_len, hid_dim
-        src = self.dropout((self.tok_emb(src) * self.scale) + self.pos_emb(pos))
-        output = self.encoder(src, src_mask, src_key_padding_mask)  
-        return output
+
+        if x_hard:
+            B, S = x.size()
+            pos = torch.arange(0, S).unsqueeze(0).repeat(B, 1).to(self.device)
+            x = self.dropout((self.tok_emb(x) * self.scale) + self.pos_emb(pos))
+            x_ = self.encoder(x, x_m, x_pm)  
+        else:
+            B, S, _ = x.size()
+            pos = torch.arange(0, S).unsqueeze(0).repeat(B, 1).to(self.device)
+            x = self.dropout((x @ self.tok_emb.weight * self.scale) + self.pos_emb(pos))
+            x_ = self.encoder(x, x_m, x_pm)  
+            
+        return x_

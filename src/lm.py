@@ -15,40 +15,32 @@ class LanguageModel(nn.Module):
         self.dropout = nn.Dropout(configs.dropout)
         self.register_buffer('scale', torch.sqrt(torch.FloatTensor([configs.hid_dim])))
         self.linear = nn.Linear(configs.hid_dim, configs.vocab_size)
-
-    def soft_lm(self, x_prob):
+    
+    def decode(self, x, x_m=None, x_pm=None, hard=False):
         '''
         INPUT: 
-        x_prob (B, S, V) in normalised form
         
-        RETURN: 
-        output (B, S, V) in un-normalised form
-        '''
-        batch_size, seq_len, _ = x_prob.size()
-        pos = torch.arange(0, seq_len).unsqueeze(0).repeat(batch_size, 1).to(self.device)
-        x = self.dropout((x_prob @ self.tok_emb.weight * self.scale) + self.pos_emb(pos))
-        output = self.encoder(x)
-        output = F.softmax(self.linear(output), dim=-1)
-        
-        return output
+        x (B, S-1, V) if hard == False; <bos> x
+        x (B, S-1) if hard == True; <bos> x
+        x_m (S-1, S-1)
+        x_pm (B, S-1)
 
-    def hard_lm(self, x, x_mask=None, x_key_padding_mask=None):
-        '''
-        INPUT: 
-        x (B, S) <bos> x
-        x_msk: (S, S) <bos> x
-        x_key_padding_mask: (B, S) <bos> x
-        
         RETURN: 
-        output (B, S, V) in normalised form 
-        output x <eos>
-        '''
-        batch_size, seq_len = x.size()
-        # pos: batch, seq_len
-        pos = torch.arange(0, seq_len).unsqueeze(0).repeat(batch_size, 1).to(self.device)
-        # src: batch, seq_len, hid_dim
-        x = self.dropout((self.tok_emb(x) * self.scale) + self.pos_emb(pos))
-        output = self.encoder(x, x_mask, x_key_padding_mask)  
-        output = F.softmax(self.linear(output), dim=-1)
 
-        return output
+        x_ (B, S-1); x_ <eos> 
+        '''
+
+        if hard:
+            B, S = x.size()
+            pos = torch.arange(0, S).unsqueeze(0).repeat(B, 1).to(self.device)
+            x = self.dropout((self.tok_emb(x) * self.scale) + self.pos_emb(pos))
+            x_ = self.encoder(x, x_m, x_pm)  
+            x_ = F.softmax(self.linear(x_), dim=-1)
+        else:
+            B, S, _ = x.size()
+            pos = torch.arange(0, S).unsqueeze(0).repeat(B, 1).to(self.device)
+            x = self.dropout((x @ self.tok_emb.weight * self.scale) + self.pos_emb(pos))
+            x_ = self.encoder(x, x_m, x_pm)  
+            x_ = F.softmax(self.linear(x_), dim=-1)
+        
+        return x_

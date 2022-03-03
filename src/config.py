@@ -35,6 +35,10 @@ class Configs(object):
             setattr(self, name, value)
 
         if self.lm_dir:
-            lm_name = f'seed_{self.seed}_hard_{self.hard}_batchloss_{self.batch_loss}_unsupervised_{self.unsupervised}_pseudo_{self.use_pseudo}'
+            lm_name = f'seed_{self.seed}_hardloss_{self.hard_loss}_batchloss_{self.batch_loss}_unsupervised_{self.unsupervised}_pseudo_{self.use_pseudo}'
             self.lm_id = lm_name
+
+        if self.vae_dir:
+            vae_name = f'seed_{self.seed}_hardloss_{self.hard_loss}_batchloss_{self.batch_loss}_unsupervised_{self.unsupervised}_pseudo_{self.use_pseudo}_hardlatent_{self.latent_hard}_gumbelmax_{self.gumbel_max}'
+            self.vae_id = lm_name
 

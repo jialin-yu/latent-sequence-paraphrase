@@ -32,32 +32,92 @@ class Transformer(nn.Module):
         # the loss should return in per batch
         self.loss = nn.CrossEntropyLoss(ignore_index=self.pad_id, reduction="none")
 
-    def _get_mask(self, src, trg):
+    def _get_causal_mask(self, src, trg):
         '''
-        src: (B, S)
-        trg: (B, T)
-        for square mask, the masked one is float('-inf') and unmasked one is 0
-        for key_pad_mask, the masked one is 0 and unmasked one is 1 [0000111]
+        Generate Causal Mask
+        
+        INPUT:
+        src (B, S)
+        trg (B, T)
+
+        OUTPUT:
+        [ x1 x2 x3 ] ==> [ 0 -inf -inf ]
+                         [ 0   0  -inf ]
+                         [ 0   0    0  ]
+
+        src_m (S, S)
+        trg_m (T, T)
+        trg_src_m (T, S)
+        '''
+
+        _, S = src.size()
+        _, T = trg.size()
+
+        src_m = torch.triu(torch.ones(S, S) * float('-inf'), diagonal=1).to(self.device)
+        trg_m = torch.triu(torch.ones(T, T) * float('-inf'), diagonal=1).to(self.device)
+        trg_src_m = torch.triu(torch.ones(T, S) * float('-inf'), diagonal=1).to(self.device)
+
+        return src_m, trg_m, trg_src_m
+
+    def _get_padding_mask(self, src, trg):
+        '''
+        Generate Padding Mask
+
+        INPUT:
+        src (B, S)
+        trg (B, T)
+
+        OUTPUT: 
+        [ x1 x2 x3 <pad> <pad> ] ==> [ 0 0 0 1 1 ]
+        src_pm (B, S)
+        trg_pm (B, T)
         '''
         _, S = src.size()
         _, T = trg.size()
-        
-        src_msk = torch.zeros((S, S)).type(torch.bool).to(self.device)
-        trg_msk = torch.triu(torch.ones(T, T) * float('-inf'), diagonal=1).to(self.device)
-        memory_msk = torch.triu(torch.ones(T, S) * float('-inf'), diagonal=1).to(self.device) 
-        src_key_padding_mask = (src == self.pad_id).to(self.device)
-        trg_key_padding_mask = (trg == self.pad_id).to(self.device)
-        
-        return src_msk, trg_msk, memory_msk, src_key_padding_mask, trg_key_padding_mask 
 
-    def encode_sample_decode(self, encoder, decoder, src, trg, hard=False, gumbel_max=False, temperature=None):
+        src_pm = (src == self.pad_id).to(self.device)
+        trg_pm = (trg == self.pad_id).to(self.device)
+
+        return src_pm, trg_pm
+
+    def decode_lm(self, lm_model, src, src_hard=False):
         '''
-        Encode and decode with gumbel softmax sampling (hard/soft)
+        Decode src in lm_model
+
+        INPUT:
+
+        src (B, S-1) if hard == True; <bos> x
+        src (B, S-1, V) if hard == False; <bos> x 
+
+
+        RETURN:
+        output (B, S-1, V) x_ <eos>
+        '''
+        if src_hard:
+            src_m, _, _ = self._get_causal_mask(src, src)
+            src_pm, _ = self._get_padding_mask(src, src)
+            output = lm_model.decode(src, src_m, src_pm, True)
+        else:
+            hard_src = torch.argmax(src, dim=2)
+            src_m, _, _ = self._get_causal_mask(hard_src, hard_src)
+            src_pm, _ = self._get_padding_mask(hard_src, hard_src)
+            output = lm_model.decode(src, src_m, src_pm, False)
+        
+        return output
+
+    def encode_sample_decode(self, encoder, decoder, src, trg, latent_hard=False, gumbel_max=False, temperature=None):
+        '''
+        Encode and decode for latent variable 
+
+        With gumbel softmax sampling
         https://arxiv.org/pdf/1611.01144.pdf
         https://arxiv.org/pdf/1611.00712.pdf
+        
         And straight through (hard/soft)
         https://arxiv.org/pdf/1308.3432.pdf
-        hard return in categorical variable format, soft return in categorical parameter format 
+
+        If latent_hard in 'one-hot' format; else in 'soft' format
+
         if gumbel_max, temperature is required
         
         INPUT:
@@ -65,78 +125,86 @@ class Transformer(nn.Module):
         trg (B, T) <bos> y <eos>
 
         RETURN: 
-        trg* (B, T, V) <bos> y <eos>
+        trg_ (B, T, V) <bos> y_ <eos>
         '''
-        B, T = trg.size()
-        src_m, _, _, src_kp_m, _ = self._get_mask(src, trg)
-        enc_src = encoder(src, src_m, src_kp_m)
-        shape = enc_src.size()
-        ind = torch.LongTensor([self.bos_id]).expand(shape[0], shape[1]).unsqueeze(1) # B, S, 1
-        dec_head = torch.zeros_like(enc_src).view(-1, shape[-1])
-        dec_head.scatter_(1, ind.view(-1, 1), 1)
-        dec_head = dec_head.view(*shape)[:, 0, :].unsqueeze(1) # B,1, V
-        dec_temp = dec_head
+        _, T = trg.size()
+        
+        src_pm, _ = self._get_padding_mask(src, src)
+        enc_src = encoder.encode(src, None, src_pm, True)
+        dec_temp= F.one_hot(src, self.vocab_size)[:, 0].unsqueeze(1) # B, 1, V
 
         for i in range(T-1):
-            if hard:
+
+            hard_trg = torch.argmax(dec_temp, dim=2)
+            _, trg_m, trg_src_m = self._get_causal_mask(src, hard_trg)
+            _, trg_pm = self._get_padding_mask(src, hard_trg)
+
+            if latent_hard:
+
+                dec_out = decoder.decode(hard_trg, enc_src, trg_m, trg_src_m, trg_pm, src_pm, True)
+                
                 if gumbel_max:
-                    dec_out = decoder.soft_decode(dec_temp, enc_src)
-                    trg_new = gumbel_softmax(dec_out, temperature)[:, -1, :].unsqueeze(1)
+                    trg_new = gumbel_softmax(dec_out, temperature)[:, -1].unsqueeze(1)
                     dec_temp = torch.cat((dec_temp, trg_new), dim=1)
                 else:
-                    dec_out = decoder.soft_decode(dec_temp, enc_src)
-                    trg_new = straight_through_softmax(dec_out)[:, -1, :].unsqueeze(1) 
+                    trg_new = straight_through_softmax(dec_out)[:, -1].unsqueeze(1) 
                     dec_temp = torch.cat((dec_temp, trg_new), dim=1)
             else:
+
+                dec_out = decoder.decode(dec_temp, enc_src, trg_m, trg_src_m, trg_pm, src_pm, False)
+                
                 if gumbel_max:
-                    dec_out = decoder.soft_decode(dec_temp, enc_src)
-                    trg_new = gumbel_softmax_sample(dec_out, temperature)[:, -1, :].unsqueeze(1) 
+                    trg_new = gumbel_softmax_sample(dec_out, temperature)[:, -1].unsqueeze(1) 
                     dec_temp = torch.cat((dec_temp, trg_new), dim=1)
                 else:
-                    dec_out = decoder.soft_decode(dec_temp, enc_src)
-                    trg_new = F.softmax(dec_out, dim=-1)[:, -1, :].unsqueeze(1) # B, 1, V
+                    trg_new = F.softmax(dec_out, dim=-1)[:, -1].unsqueeze(1)
                     dec_temp = torch.cat((dec_temp, trg_new), dim=1)
         
-        # append the dec_head for (B, T, V)
-        out = torch.cat((dec_temp, dec_out), dim=1)
-        return out
+        # dec_temp should have size (B, T, V)
+        assert dec_temp.size() == trg.size()
+        # out = torch.cat((dec_temp, dec_out), dim=1)
+        return dec_temp
     
-    def encode_and_decode(self, encoder, decoder, src, trg, encode_hard=True):
+    def encode_and_decode(self, encoder, decoder, src, trg, src_hard=True):
         '''
         INPUT:
-        src (B, S) if encode_hard == Ture 
-        src (B, S, V) if not encode_hard == False, must be normalised
-        src <bos> x <eos>
-        trg (B, T) <bos> y <eos>
+        src (B, S) if encode_hard == Ture; <bos> x <eos>
+        src (B, S, V) if encode_hard == False; <bos> x <eos>
+        trg (B, T-1) y <eos>
 
-        Return: (B, T-1, V) in normalised form
+        Return: (B, T-1, V) y_ <eos>
         '''
-        if encode_hard:
-            src_m, trg_m, memory_m, src_kp_m, trg_kp_m = self._get_mask(src, trg[:, :-1])
-            enc_src = encoder.hard_encode(src, src_m, src_kp_m)
-            dec_out = decoder.hard_decode(trg[:, :-1], enc_src, trg_m, memory_m, trg_kp_m, src_kp_m)
+        if src_hard:
+            src_pm, trg_pm = self._get_padding_mask(src, trg)
+            _, trg_m, trg_src_m = self._get_causal_mask(src, trg)
+            enc_src = encoder.encode(src, None, src_pm, True)
+            dec_out = decoder.decode(trg, enc_src, trg_m, trg_src_m, trg_pm, src_pm, True)
         else:
-            enc_src = encoder.soft_encode(src)
-            dec_out = decoder.hard_decode(trg[:, :-1], enc_src)
+            src_hard_form = torch.argmax(src, dim=2)
+            src_pm, trg_pm = self._get_padding_mask(src_hard_form, trg)
+            _, trg_m, trg_src_m = self._get_causal_mask(src_hard_form, trg)
+            enc_src = encoder.encode(src, None, src_pm, False)
+            dec_out = decoder.decode(trg, enc_src, trg_m, trg_src_m, trg_pm, src_pm, True)
         
         return dec_out
 
 
-    def _batch_reconstruct_error(self, src, trg, hard=False, trg_mask=None):
+    def _batch_reconstruct_error(self, src, trg, hard_loss=False):
         '''
         Calculate cross entropy based on src and trg
         src: (B, T, V)  xxxx <eos>
         trg: (B, T) xxxx <eos>
-        trg_mask: (B, T) xxxx <eos>
 
         Returns: loss in (B)
         '''
 
-        if hard:
+        trg_pm, _ = self._get_padding_mask(trg, trg)
+
+        if hard_loss:
             _, S, V = src.size()
             src_ = straight_through_softmax(src)
             log_p = F.log_softmax(src_, dim=2)
-            loss = -((log_p * F.one_hot(trg, V)).sum(2) * (1 - trg_mask.int())).sum(1)
+            loss = -((log_p * F.one_hot(trg, V)).sum(2) * (1 - trg_pm.int())).sum(1)
         else: 
             _, S, V = src.size()
             loss = self.loss(src.contiguous().view(-1, V), trg.contiguous().view(-1)) # B*S
@@ -144,17 +212,18 @@ class Transformer(nn.Module):
 
         return loss
     
-    def _instance_reconstruct_error(self, src, trg, hard=False, trg_mask=None):
+    def _instance_reconstruct_error(self, src, trg, hard_loss=False):
         '''
         Calculate cross entropy based on src and trg
         src: (B, T, V)  xxxx <eos>
         trg: (B, T) xxxx <eos>
-        trg_mask: (B, T) xxxx <eos>
 
         Returns: loss in (B*T)
         '''
 
-        if hard:
+        trg_pm, _ = self._get_padding_mask(trg, trg)
+
+        if hard_loss:
             _, S, V = src.size()
             src_ = straight_through_softmax(src)
             loss = self.loss(src_.contiguous().view(-1, V), trg.contiguous().view(-1)) 
@@ -164,48 +233,50 @@ class Transformer(nn.Module):
         
         return loss
 
-    def _batch_cross_entropy(self, q, p, trg_mask, hard=False):
+    def _batch_cross_entropy(self, q, p, p_src, hard_loss=False):
         '''
         Calculate cross entropy for q and p 
         -E_{q}[\log(p)]
         q: (B, T, V) xxxx <eos>
         p: (B, T, V)  xxxx <eos>
-        trg_mask: (B, T) xxxx <eos>
+        p_src: (B, T) xxxx <eos>
 
         Returns: loss in (B)
         '''
 
-        if hard:
+        p_pm, _ = self._get_padding_mask(p_src, p_src)
+
+        if hard_loss:
             q_ = straight_through_softmax(q)
             p_ = straight_through_softmax(p)
             log_p = F.log_softmax(p_, dim=2)
-            loss = -((log_p * q_).sum(2) * (1 - trg_mask.int())).sum(1)
+            loss = -((log_p * q_).sum(2) * (1 - p_pm.int())).sum(1)
         else:
             log_p = F.log_softmax(p, dim=2)
-            loss = -((log_p * q).sum(2) * (1 - trg_mask.int())).sum(1)
+            loss = -((log_p * q).sum(2) * (1 - p_pm.int())).sum(1)
 
         return loss
 
-    def _instance_cross_entropy(self, q, p, trg_mask, hard=False):
+    def _instance_cross_entropy(self, q, p, p_src, hard=False):
         '''
         Calculate cross entropy for q and p 
         -E_{q}[\log(p)]
         q: (B, T, V) xxxx <eos>
         p: (B, T, V)  xxxx <eos>
-        trg_mask: (B, T) xxxx <eos>
+        p_src: (B, T) xxxx <eos>
 
         Returns: loss in (B*T)
         '''
 
-        _, S, V = q.size()
+        p_pm, _ = self._get_padding_mask(p_src, p_src)
 
         if hard:
             q_ = straight_through_softmax(q)
             p_ = straight_through_softmax(p)
             log_p = F.log_softmax(p_.c, dim=2)
-            loss = -(log_p * q_).sum(2).contiguous().view(-1) * (1 - trg_mask.int()).contiguous().view(-1)
+            loss = -(log_p * q_).sum(2).contiguous().view(-1) * (1 - p_pm.int()).contiguous().view(-1)
         else:
             log_p = F.log_softmax(p.c, dim=2)
-            loss = -(log_p * q).sum(2).contiguous().view(-1) * (1 - trg_mask.int()).contiguous().view(-1)
+            loss = -(log_p * q).sum(2).contiguous().view(-1) * (1 - p_pm.int()).contiguous().view(-1)
 
         return loss

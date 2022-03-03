@@ -15,43 +15,34 @@ class Decoder(nn.Module):
         self.register_buffer('scale', torch.sqrt(torch.FloatTensor([configs.hid_dim])))
         self.linear = nn.Linear(configs.hid_dim, configs.vocab_size)
 
-    def soft_decode(self, tgt_distr, memory):
+    def decode(self, trg, src_memory, trg_m=None, trg_src_m=None, trg_pm=None, src_memory_pm=None, trg_hard=False):
         '''
-        INPUT:
-        tgt_distr (B, T, V) in normalised form
-        memory (B, S, E)
-
-        RETURN:
-        output (B, T, V) in in normalised form
-        '''
-        # single step decode for tgt probability
-        batch_size, seq_len, _ = tgt_distr.size()
-        pos = torch.arange(0, seq_len).unsqueeze(0).repeat(batch_size, 1).to(self.device)
-        tgt = self.dropout((tgt_distr @ self.tok_emb.weight * self.scale) + self.pos_emb(pos))
-        output = self.decoder(tgt, memory) 
-        output = F.softmax(self.linear(output), dim=-1)
-        return output
-    
-    def hard_decode(self, tgt, memory, tgt_mask=None, memory_mask=None, tgt_key_padding_mask=None, memory_key_padding_mask=None):
-        '''
-        INPUT:
-        tgt (B, T)
-        memory (B, S, E) 
-        tgt_mask (T, T)
-        memory_mask (T, S)
-        tgt_key_padding_mask (B, T)
-        memory_key_padding_mask (B, S)
-
-        RETURN:
-        output (B, T, V) in in normalised form
-        '''
-
-        batch_size, trg_len = tgt.size()
-        # pos: batch, seq_len
-        pos = torch.arange(0, trg_len).unsqueeze(0).repeat(batch_size, 1).to(tgt.device)
-        # src: batch, seq_len, hid_dim
-        tgt = self.dropout((self.tok_emb(tgt) * self.scale) + self.pos_emb(pos))
-        output = self.decoder(tgt, memory, tgt_mask, memory_mask, tgt_key_padding_mask, memory_key_padding_mask) 
-        output = F.softmax(self.linear(output), dim=-1)
+        INPUT: 
         
-        return output
+        trg (B, T-1, V) if hard == False; <bos> y 
+        trg (B, T-1) if hard == True; <bos> y
+        src_memory (B, S, H) <bos> x <eos>
+        trg_m (T-1, T-1)
+        trg_src_m (T-1, S)
+        trg_pm (B, T-1)
+        src_memory_pm (B, S)
+        
+        RETURN: 
+
+        trg_ (B, T-1); y_ <eos> 
+        '''
+
+        if trg_hard:
+            B, T = trg.size()
+            pos = torch.arange(0, T).unsqueeze(0).repeat(B, 1).to(self.device) 
+            trg = self.dropout((self.tok_emb(trg) * self.scale) + self.pos_emb(pos))
+            y_ = self.decoder(trg, src_memory, trg_m, trg_src_m, trg_pm, src_memory_pm) 
+            y_ = F.softmax(self.linear(y_), dim=-1)
+        else:
+            B, T, _ = trg.size()
+            pos = torch.arange(0, T).unsqueeze(0).repeat(B, 1).to(self.device) 
+            trg = self.dropout((trg @ self.tok_emb.weight * self.scale) + self.pos_emb(pos))
+            y_ = self.decoder(trg, src_memory, trg_m, trg_src_m, trg_pm, src_memory_pm)
+            y_ = F.softmax(self.linear(y_), dim=-1)
+        
+        return y_
