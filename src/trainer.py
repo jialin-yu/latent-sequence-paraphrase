@@ -242,7 +242,7 @@ class Trainer(object):
     def _train_vae(self, dataloader, optimizer, grad_clip, temperature=None, factor=1):
         self.model.train()
         self.model.prior.eval() # freeze parameter for prior
-        epoch_total_loss, epoch_rec_loss, epoch_kl_loss = 0
+        epoch_total_loss, epoch_rec_loss, epoch_kl_loss = 0, 0, 0
         start_time = time.time()
         
         log_inter = len(dataloader) // 5
@@ -346,7 +346,7 @@ class Trainer(object):
 
     def _evaluate_vae(self, dataloader, temperature=None, factor=1):
         self.model.eval()
-        epoch_total_loss, epoch_rec_loss, epoch_kl_loss = 0
+        epoch_total_loss, epoch_rec_loss, epoch_kl_loss = 0, 0, 0
         start_time = time.time()
         
         log_inter = len(dataloader) // 5

@@ -41,8 +41,15 @@ class Decoder(nn.Module):
         else:
             B, T, _ = trg.size()
             pos = torch.arange(0, T).unsqueeze(0).repeat(B, 1).to(self.device) 
-            trg = self.dropout((trg @ self.tok_emb.weight * self.scale) + self.pos_emb(pos))
+            trg = self.dropout(((trg.double() @ self.tok_emb.weight.double())* self.scale) + self.pos_emb(pos))
+            trg = trg.double()
+            print('This line okay')
+            # print(src_memory.size())
+            # print(src_memory.device)
+            print(src_memory.double().type())
+            # trg = self.dropout((trg.double() @ self.tok_emb.weight * self.scale) + self.pos_emb(pos))
             y_ = self.decoder(trg, src_memory, trg_m, trg_src_m, trg_pm, src_memory_pm)
+            print('This line okayy')
             y_ = F.softmax(self.linear(y_), dim=-1)
         
         return y_

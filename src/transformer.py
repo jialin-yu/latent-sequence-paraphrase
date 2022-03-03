@@ -131,7 +131,7 @@ class Transformer(nn.Module):
         
         src_pm, _ = self._get_padding_mask(src, src)
         enc_src = encoder.encode(src, None, src_pm, True)
-        dec_temp= F.one_hot(src, self.vocab_size)[:, 0].unsqueeze(1) # B, 1, V
+        dec_temp= F.one_hot(src, self.vocab_size)[:, 0].unsqueeze(1).double() # B, 1, V
 
         for i in range(T-1):
 
