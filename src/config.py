@@ -19,12 +19,12 @@ class Configs(object):
         self.quora_max_len = 25
         self.mscoco_max_len = 20
 
-        self.quora_min_freq = 25
-        self.mscoco_min_freq = 20
+        self.quora_min_freq = 5
+        self.mscoco_min_freq = 5
 
-        self.max_len = 200
+        self.max_len = 150
 
-        self.batch_size = 16
+        self.batch_size = 32
         self.vocab_size = None
 
         self.inf = float('inf')

@@ -14,13 +14,13 @@ def main():
     parser.add_argument(
         '-d', '--data', type=str, default='quora')
     parser.add_argument(
-        '-mv', '--max_vocab', type=int, default=20000)
+        '-mv', '--max_vocab', type=int, default=None)
     parser.add_argument(
-        '-trs', '--train_size', type=int, default=1000)
+        '-trs', '--train_size', type=int, default=50000)
     parser.add_argument(
-        '-vs', '--valid_size', type=int, default=200)
+        '-vs', '--valid_size', type=int, default=3000)
     parser.add_argument(
-        '-ts', '--test_size', type=int, default=200)
+        '-ts', '--test_size', type=int, default=20000)
     
     parser.add_argument(
         '-loss', '--batch_loss', type=bool, default=True)
@@ -89,9 +89,10 @@ def main():
 
     configs = Configs(**vars(args))
     interface = Trainer(configs)
-    interface.main_lm()
-    interface.main_vae()
-    # interface.main_seq2seq()
+    # interface.main_lm()
+    # interface.main_vae()
+    interface.main_seq2seq()
+    # interface.main_semi_supervised()
 
 
 if __name__ == "__main__":

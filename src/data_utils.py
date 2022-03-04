@@ -128,7 +128,7 @@ def normalise(train_and_valid, test, vocab, cutoff):
     
     test_temp = []
     for q1, q2, q1_ in tqdm(test):
-        test_temp.append((token_to_index(q1, vocab), token_to_index(q2, vocab), token_to_index(q1_, vocab)))
+        test_temp.append((token_to_index(q1[:cutoff], vocab), token_to_index(q2[:cutoff], vocab), token_to_index(q1_[:cutoff], vocab)))
     return train_valid_temp, test_temp
 
 #################################################
@@ -168,4 +168,3 @@ def calculate_bound(tokenized_test_pairs, baseline=False):
         print(f'{"-"*20} Random selection lower bound {"-"*20}')
         print(f'BLEU score is {bleu_["bleu"]} and precisions are {bleu_["precisions"]}.')
         print(f'ROUGE-1 score is {rouge_["rouge1"].mid.fmeasure}, ROUGE-2 score is {rouge_["rouge2"].mid.fmeasure}, and ROUGE-L score is {rouge_["rougeL"].mid.fmeasure}.')
-        

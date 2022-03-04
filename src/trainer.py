@@ -13,6 +13,8 @@ import os
 from transformer import Transformer
 from sample import straight_through_softmax
 
+from pipeline import index_to_token, remove_bos_eos
+
 class Trainer(object):
 
     def __init__(self, configs):
@@ -38,7 +40,25 @@ class Trainer(object):
 
         self.model = Transformer(self.configs)
         self.model.to(self.device)
+        print(f'{"-"*20} Set model as {self._count_parameters(self.model)} parameters {"-"*20}')
+    
+    def main_inference(self, dataloader, vocab):
+
+        src_trg_idx = []
+
+        for idx, (src, trg, src_) in enumerate(tqdm(dataloader)):
+
+            trg_batch = self.model.inference(self.model.src_encoder, self.model.trg_decoder, src, 30)
+
+            for index, _ in enumerate(trg_batch):
+                src_trg_idx.append((trg_batch[index].cpu(), trg[index].cpu()))
         
+        test_ = [(index_to_token(remove_bos_eos(i, self.configs.bos_id, self.configs.eos_id), vocab), index_to_token(remove_bos_eos(j, self.configs.bos_id, self.configs.eos_id), vocab)) for (i, j) in src_trg_idx]
+        print(f'{"-"*20} Calculate Final Results {"-"*20}')
+        calculate_bound(test_, True)
+
+
+
     
     def main_lm(self):
         model_dir = self.configs.lm_dir
@@ -102,6 +122,8 @@ class Trainer(object):
         valid_loss = self._evaluate_seq2seq(self.test_data)
         print(f'Seq2seq experiment done in {time.time() - EXP_START}s.')
 
+        self.main_inference(self.test_data, self.vocab)
+
     def main_vae(self):
         lm_dir = self.configs.lm_dir
         lm_name = self.configs.lm_id
@@ -131,15 +153,19 @@ class Trainer(object):
         best_valid_loss = float('inf')
         for epoch in range(max_epoch):
             train_loss = self._train_vae(self.train_data, optimizer, grad_clip, temperature[epoch], factor)
-            valid_loss = self._evaluate_vae(self.valid_data, low_temp)
             
             print(f'{"-"*20} Epoch {epoch + 1}/{max_epoch} training done {"-"*20}')
+
+            valid_loss = self._evaluate_vae(self.valid_data, low_temp)
+            
+            print(f'{"-"*20} Epoch {epoch + 1}/{max_epoch} evaluation done {"-"*20}')
             
             if valid_loss < best_valid_loss:
                 best_valid_loss = valid_loss 
                 self._save_model(self.model, model_dir, vae_name)
                 print(f'Save model in epoch {epoch + 1}.')
         
+        print(f'{"-"*40}')
         print('Retrieve best model for testing')
         self._load_model(self.model, model_dir, vae_name)
         self.model.prior.to(self.device)
@@ -639,8 +665,8 @@ class Trainer(object):
 
             epoch_loss += i_loss.item()
 
-            if idx % log_inter == 0 and idx > 0:
-                print(f'| PPL: {math.exp(epoch_loss/(idx+1))} | LOSS: {epoch_loss/(idx+1)} |')
+            
+        print(f'| PPL: {math.exp(epoch_loss/(idx+1))} | LOSS: {epoch_loss/(idx+1)} |')
         
         elapsed = time.time() - start_time
         print(f'Epoch evaluateion time is: {elapsed}s.')

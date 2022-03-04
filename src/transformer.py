@@ -190,6 +190,30 @@ class Transformer(nn.Module):
         
         return dec_out
 
+    def inference(self, encoder, decoder, src, max_len=100):
+        '''
+        INPUT:
+        src (B, S) <bos> x <eos>
+
+        RETURN: 
+        trg_ (B, max_len) <bos> y_ <eos>
+        '''
+        
+        src_pm, _ = self._get_padding_mask(src, src)
+        enc_src = encoder.encode(src, None, src_pm, True)
+        dec_temp= src[:, 0].unsqueeze(1) # B, 1
+
+        for i in range(max_len-1):
+
+            _, trg_m, trg_src_m = self._get_causal_mask(src, dec_temp)
+            _, trg_pm = self._get_padding_mask(src, dec_temp)
+
+            dec_out = decoder.decode(dec_temp, enc_src, trg_m, trg_src_m, trg_pm, src_pm, True)
+            dec_out_ = torch.argmax(dec_out, dim=2)[:, -1].unsqueeze(1)
+            dec_temp = torch.cat((dec_temp, dec_out_), dim=1)
+        
+        return dec_temp
+
 
     def _batch_reconstruct_error(self, src, trg, hard_loss=False):
         '''

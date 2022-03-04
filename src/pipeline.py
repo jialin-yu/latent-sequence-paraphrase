@@ -23,3 +23,16 @@ def get_pseudo(string):
     random.Random(1234).shuffle(tokenizer(tmp_str_token))
     return tmp_str_token
 
+def remove_bos_eos(idx_list, bos_id, eos_id):
+    clear_idx = []
+    for idx in idx_list:
+        if idx == eos_id:
+            return clear_idx
+        else:
+            if idx == bos_id:
+                continue
+            else:
+                clear_idx.append(idx)
+    
+    return clear_idx
+
