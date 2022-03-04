@@ -22,9 +22,9 @@ class Configs(object):
         self.quora_min_freq = 25
         self.mscoco_min_freq = 20
 
-        self.max_len = 100
+        self.max_len = 200
 
-        self.batch_size = 32
+        self.batch_size = 16
         self.vocab_size = None
 
         self.inf = float('inf')
@@ -41,4 +41,9 @@ class Configs(object):
         if self.vae_dir:
             vae_name = f'seed_{self.seed}_hardloss_{self.hard_loss}_batchloss_{self.batch_loss}_unsupervised_{self.unsupervised}_pseudo_{self.use_pseudo}_hardlatent_{self.latent_hard}_gumbelmax_{self.gumbel_max}'
             self.vae_id = lm_name
+
+        if self.seq2seq_dir:
+            seq2seq_name = f'seed_{self.seed}_hardloss_{self.hard_loss}_batchloss_{self.batch_loss}'
+            self.seq2seq_id = seq2seq_name
+
 

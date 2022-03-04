@@ -18,29 +18,31 @@ def main():
     parser.add_argument(
         '-trs', '--train_size', type=int, default=1000)
     parser.add_argument(
-        '-vs', '--valid_size', type=int, default=50)
+        '-vs', '--valid_size', type=int, default=200)
     parser.add_argument(
         '-ts', '--test_size', type=int, default=200)
     
     parser.add_argument(
         '-loss', '--batch_loss', type=bool, default=True)
     parser.add_argument(
-        '-lh', '--latent_hard', type=bool, default=False)
+        '-lh', '--latent_hard', type=bool, default=True)
     parser.add_argument(
         '-hl', '--hard_loss', type=bool, default=False)
 
     parser.add_argument(
-        '-e', '--unsupervised', type=bool, default=False)
+        '-e', '--unsupervised', type=bool, default=True)
     
     parser.add_argument(
-        '-gum', '--gumbel_max', type=bool, default=False)
+        '-gum', '--gumbel_max', type=bool, default=True)
     
     parser.add_argument(
         '-plm', '--use_pretrain_lm', type=bool, default=True)
 
     parser.add_argument(
-        '-up', '--use_pseudo', type=bool, default=False)
+        '-up', '--use_pseudo', type=bool, default=True)
     
+    parser.add_argument(
+        '-gc', '--gc', type=int, default=0.01)
 
     # LM experiment
     parser.add_argument(
@@ -49,8 +51,6 @@ def main():
         '-lmme', '--lm_max_epoch', type=int, default=10)
     parser.add_argument(
         '-lmlr', '--lm_lr', type=int, default=1e-4)
-    parser.add_argument(
-        '-gc', '--gc', type=int, default=0.01)
 
     parser.add_argument(
         '-vaedir', '--vae_dir', type=str, default='../model/vae/')
@@ -58,6 +58,18 @@ def main():
         '-vaeme', '--vae_max_epoch', type=int, default=10)
     parser.add_argument(
         '-vaelr', '--vae_lr', type=int, default=1e-4)
+
+    parser.add_argument(
+        '-seq2seqdir', '--seq2seq_dir', type=str, default='../model/seq2seq/')
+    parser.add_argument(
+        '-seq2seqme', '--seq2seq_max_epoch', type=int, default=10)
+    parser.add_argument(
+        '-seq2seqlr', '--seq2seq_lr', type=int, default=1e-4)
+
+    parser.add_argument(
+        '-semidir', '--semi_dir', type=str, default='../model/semi/')
+    
+    
 
     
     parser.add_argument(
@@ -77,8 +89,9 @@ def main():
 
     configs = Configs(**vars(args))
     interface = Trainer(configs)
-    # interface.main_lm()
+    interface.main_lm()
     interface.main_vae()
+    # interface.main_seq2seq()
 
 
 if __name__ == "__main__":

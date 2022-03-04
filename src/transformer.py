@@ -161,7 +161,9 @@ class Transformer(nn.Module):
                     dec_temp = torch.cat((dec_temp, trg_new), dim=1)
         
         # dec_temp should have size (B, T, V)
-        assert dec_temp.size() == trg.size()
+        # print(dec_temp.size()[:-1])
+        # print(trg.size())
+        assert dec_temp.size()[:-1] == trg.size()
         # out = torch.cat((dec_temp, dec_out), dim=1)
         return dec_temp
     
@@ -273,10 +275,11 @@ class Transformer(nn.Module):
         if hard:
             q_ = straight_through_softmax(q)
             p_ = straight_through_softmax(p)
-            log_p = F.log_softmax(p_.c, dim=2)
+            log_p = F.log_softmax(p_, dim=2)
             loss = -(log_p * q_).sum(2).contiguous().view(-1) * (1 - p_pm.int()).contiguous().view(-1)
         else:
-            log_p = F.log_softmax(p.c, dim=2)
+            log_p = F.log_softmax(p, dim=2)
             loss = -(log_p * q).sum(2).contiguous().view(-1) * (1 - p_pm.int()).contiguous().view(-1)
+            
 
         return loss

@@ -3,3 +3,4 @@ env/
 playground/
 model/
 **/__pycache__/
+note/

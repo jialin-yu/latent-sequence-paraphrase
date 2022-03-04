@@ -10,6 +10,7 @@ BY Jialin Yu
 '''
 
 import json
+import random
 from webbrowser import get
 from datasets import load_metric
 import numpy as np
@@ -137,18 +138,34 @@ def normalise(train_and_valid, test, vocab, cutoff):
 bleu_metric = load_metric('bleu')
 rouge_metric = load_metric('rouge')
 
-def calculate_bound(tokenized_test_pairs, bleu_baseline=False, rouge_baseline=False):
+def calculate_bound(tokenized_test_pairs, baseline=False):
 
-    if(bleu_baseline):
-        print("Calculating bleu ... ")
-        predictions = [s[0] for s in tokenized_test_pairs]
-        references = [[s[1]] for s in tokenized_test_pairs]
-        bleu = bleu_metric.compute(predictions=predictions, references=references)
-        print(f'BLEU score is {bleu["bleu"]} and precisions are {bleu["precisions"]}.')
+    if(baseline):
 
-    if(rouge_baseline):
-        print("Calculating rouge ... ")
+        print("Calculating bleu and rouge ... ")
+        tok_predictions = [s[0] for s in tokenized_test_pairs]
+        tok_references = [[s[1]] for s in tokenized_test_pairs]
+
+        bleu = bleu_metric.compute(predictions=tok_predictions, references=tok_references)
+
         predictions = [stringify(s[0]) for s in tokenized_test_pairs]
         references = [stringify(s[1]) for s in tokenized_test_pairs]
+
         rouge = rouge_metric.compute(predictions=predictions, references=references)
+        
+        random.Random(1234).shuffle(tokenized_test_pairs)
+
+        tok_predictions_ = [s[0] for s in tokenized_test_pairs]
+        predictions_ = [stringify(s[0]) for s in tokenized_test_pairs]
+        
+        bleu_ = bleu_metric.compute(predictions=tok_predictions_, references=tok_references)
+        rouge_ = rouge_metric.compute(predictions=predictions_, references=references)
+        
+        print(f'{"-"*20} Ground truth upper bound {"-"*20}')
+        print(f'BLEU score is {bleu["bleu"]} and precisions are {bleu["precisions"]}.')
         print(f'ROUGE-1 score is {rouge["rouge1"].mid.fmeasure}, ROUGE-2 score is {rouge["rouge2"].mid.fmeasure}, and ROUGE-L score is {rouge["rougeL"].mid.fmeasure}.')
+        
+        print(f'{"-"*20} Random selection lower bound {"-"*20}')
+        print(f'BLEU score is {bleu_["bleu"]} and precisions are {bleu_["precisions"]}.')
+        print(f'ROUGE-1 score is {rouge_["rouge1"].mid.fmeasure}, ROUGE-2 score is {rouge_["rouge2"].mid.fmeasure}, and ROUGE-L score is {rouge_["rougeL"].mid.fmeasure}.')
+        

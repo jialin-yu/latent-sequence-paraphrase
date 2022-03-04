@@ -37,6 +37,6 @@ class Encoder(nn.Module):
             pos = torch.arange(0, S).unsqueeze(0).repeat(B, 1).to(self.device)
             # x = self.dropout((x.double() @ self.tok_emb.weight * self.scale) + self.pos_emb(pos))
             x = self.dropout(((x.double() @ self.tok_emb.weight.double())* self.scale) + self.pos_emb(pos))
-            x_ = self.encoder(x, x_m, x_pm)  
+            x_ = self.encoder(x.float(), x_m, x_pm)  
             
         return x_
