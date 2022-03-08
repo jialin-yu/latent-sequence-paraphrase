@@ -16,14 +16,16 @@ def main():
     parser.add_argument(
         '-mv', '--max_vocab', type=int, default=None)
     parser.add_argument(
-        '-trs', '--train_size', type=int, default=50000)
+        '-utrs', '--un_train_size', type=int, default=50000)
     parser.add_argument(
-        '-vs', '--valid_size', type=int, default=3000)
+        '-trs', '--train_size', type=int, default=20000)
     parser.add_argument(
-        '-ts', '--test_size', type=int, default=20000)
+        '-vs', '--valid_size', type=int, default=1000)
+    parser.add_argument(
+        '-ts', '--test_size', type=int, default=3000)
     
     parser.add_argument(
-        '-loss', '--batch_loss', type=bool, default=True)
+        '-loss', '--batch_loss', type=bool, default=False)
     parser.add_argument(
         '-lh', '--latent_hard', type=bool, default=True)
     parser.add_argument(
@@ -39,18 +41,15 @@ def main():
         '-plm', '--use_pretrain_lm', type=bool, default=True)
 
     parser.add_argument(
-        '-up', '--use_pseudo', type=bool, default=True)
-    
-    parser.add_argument(
-        '-gc', '--gc', type=int, default=0.01)
+        '-up', '--use_pseudo', type=bool, default=False)
 
     # LM experiment
     parser.add_argument(
         '-lmdir', '--lm_dir', type=str, default='../model/lm/')
     parser.add_argument(
-        '-lmme', '--lm_max_epoch', type=int, default=10)
+        '-lmme', '--lm_max_epoch', type=int, default=5)
     parser.add_argument(
-        '-lmlr', '--lm_lr', type=int, default=1e-4)
+        '-lmlr', '--lm_lr', type=int, default=10)
 
     parser.add_argument(
         '-vaedir', '--vae_dir', type=str, default='../model/vae/')
@@ -62,7 +61,7 @@ def main():
     parser.add_argument(
         '-seq2seqdir', '--seq2seq_dir', type=str, default='../model/seq2seq/')
     parser.add_argument(
-        '-seq2seqme', '--seq2seq_max_epoch', type=int, default=10)
+        '-seq2seqme', '--seq2seq_max_epoch', type=int, default=5)
     parser.add_argument(
         '-seq2seqlr', '--seq2seq_lr', type=int, default=1e-4)
 
@@ -70,14 +69,13 @@ def main():
         '-semidir', '--semi_dir', type=str, default='../model/semi/')
     
     
-
     
     parser.add_argument(
         '-hd', '--hid_dim', type=int, default=512)
     parser.add_argument(
         '-nh', '--n_heads', type=int, default=8)
     parser.add_argument(
-        '-nl', '--n_lays', type=int, default=1)
+        '-nl', '--n_lays', type=int, default=6)
     parser.add_argument(
         '-dp', '--dropout', type=int, default=0.1)
 

@@ -24,12 +24,14 @@ class Configs(object):
 
         self.max_len = 150
 
-        self.batch_size = 32
+        self.batch_size = 16
         self.vocab_size = None
 
         self.inf = float('inf')
 
-        self.lm_id = None
+        self.grad_clip = 1
+
+        self.device = None
 
         for name, value in kwargs.items():
             setattr(self, name, value)

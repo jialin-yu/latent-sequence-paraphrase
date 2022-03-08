@@ -172,7 +172,7 @@ class Transformer(nn.Module):
         INPUT:
         src (B, S) if encode_hard == Ture; <bos> x <eos>
         src (B, S, V) if encode_hard == False; <bos> x <eos>
-        trg (B, T-1) y <eos>
+        trg (B, T-1) <bos> y
 
         Return: (B, T-1, V) y_ <eos>
         '''
@@ -238,49 +238,24 @@ class Transformer(nn.Module):
 
         return loss
     
-    def _instance_reconstruct_error(self, src, trg, hard_loss=False):
+    def _reconstruction_loss(self, src, trg, hard_loss=False):
         '''
-        Calculate cross entropy based on src and trg
+        Calculate reconstruction loss
         src: (B, T, V)  xxxx <eos>
         trg: (B, T) xxxx <eos>
 
-        Returns: loss in (B*T)
+        if hard_loss: src: (B, T, V) in one-hot format
+        if penalty, return loss in (B)
+        if not penalty, return loss in (B*T)
         '''
 
-        trg_pm, _ = self._get_padding_mask(trg, trg)
+        B, _, V = src.size()
 
         if hard_loss:
-            _, S, V = src.size()
-            src_ = straight_through_softmax(src)
-            loss = self.loss(src_.contiguous().view(-1, V), trg.contiguous().view(-1)) 
-        else: 
-            _, S, V = src.size()
-            loss = self.loss(src.contiguous().view(-1, V), trg.contiguous().view(-1)) 
+            src = straight_through_softmax(src)
         
-        return loss
-
-    def _batch_cross_entropy(self, q, p, p_src, hard_loss=False):
-        '''
-        Calculate cross entropy for q and p 
-        -E_{q}[\log(p)]
-        q: (B, T, V) xxxx <eos>
-        p: (B, T, V)  xxxx <eos>
-        p_src: (B, T) xxxx <eos>
-
-        Returns: loss in (B)
-        '''
-
-        p_pm, _ = self._get_padding_mask(p_src, p_src)
-
-        if hard_loss:
-            q_ = straight_through_softmax(q)
-            p_ = straight_through_softmax(p)
-            log_p = F.log_softmax(p_, dim=2)
-            loss = -((log_p * q_).sum(2) * (1 - p_pm.int())).sum(1)
-        else:
-            log_p = F.log_softmax(p, dim=2)
-            loss = -((log_p * q).sum(2) * (1 - p_pm.int())).sum(1)
-
+        loss = self.loss(src.contiguous().view(-1, V), trg.contiguous().view(-1))
+        
         return loss
 
     def _instance_cross_entropy(self, q, p, p_src, hard=False):

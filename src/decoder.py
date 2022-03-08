@@ -6,8 +6,8 @@ class Decoder(nn.Module):
     def __init__(self, configs):
         super().__init__()
         
-        self.device = 'cuda' if configs.cuda == True else 'cpu'
-        self.tok_emb = nn.Embedding(configs.vocab_size, configs.hid_dim, padding_idx=configs.pad_id)
+        self.device = configs.device
+        self.tok_emb = nn.Embedding(configs.vocab_size, configs.hid_dim)
         self.pos_emb = nn.Embedding(configs.max_len, configs.hid_dim)
         decoder_layer = nn.TransformerDecoderLayer(d_model=configs.hid_dim, nhead=configs.n_heads, dropout=configs.dropout, batch_first=True)
         self.decoder = nn.TransformerDecoder(decoder_layer, num_layers=configs.n_lays)
@@ -37,7 +37,8 @@ class Decoder(nn.Module):
             pos = torch.arange(0, T).unsqueeze(0).repeat(B, 1).to(self.device) 
             trg = self.dropout((self.tok_emb(trg) * self.scale) + self.pos_emb(pos))
             y_ = self.decoder(trg, src_memory, trg_m, trg_src_m, trg_pm, src_memory_pm) 
-            y_ = F.softmax(self.linear(y_), dim=-1)
+            # y_ = F.softmax(self.linear(y_), dim=-1)
+            y_ = self.linear(y_)
         else:
             B, T, _ = trg.size()
             pos = torch.arange(0, T).unsqueeze(0).repeat(B, 1).to(self.device) 
