@@ -213,30 +213,6 @@ class Transformer(nn.Module):
             dec_temp = torch.cat((dec_temp, dec_out_), dim=1)
         
         return dec_temp
-
-
-    def _batch_reconstruct_error(self, src, trg, hard_loss=False):
-        '''
-        Calculate cross entropy based on src and trg
-        src: (B, T, V)  xxxx <eos>
-        trg: (B, T) xxxx <eos>
-
-        Returns: loss in (B)
-        '''
-
-        trg_pm, _ = self._get_padding_mask(trg, trg)
-
-        if hard_loss:
-            _, S, V = src.size()
-            src_ = straight_through_softmax(src)
-            log_p = F.log_softmax(src_, dim=2)
-            loss = -((log_p * F.one_hot(trg, V)).sum(2) * (1 - trg_pm.int())).sum(1)
-        else: 
-            _, S, V = src.size()
-            loss = self.loss(src.contiguous().view(-1, V), trg.contiguous().view(-1)) # B*S
-            loss = loss.contiguous().view(-1, S).sum(1)
-
-        return loss
     
     def _reconstruction_loss(self, src, trg, hard_loss=False):
         '''
@@ -257,28 +233,27 @@ class Transformer(nn.Module):
         loss = self.loss(src.contiguous().view(-1, V), trg.contiguous().view(-1))
         
         return loss
-
-    def _instance_cross_entropy(self, q, p, p_src, hard=False):
+    
+    def _KL_loss(self, q, p):
         '''
-        Calculate cross entropy for q and p 
-        -E_{q}[\log(p)]
-        q: (B, T, V) xxxx <eos>
+        Calculate kl divergence loss between q and p 
+        KL(q|p) = -E_{q}[\log(p)-\log(q)]
+        q: (B, T, V) xxxx <eos> 
         p: (B, T, V)  xxxx <eos>
-        p_src: (B, T) xxxx <eos>
 
         Returns: loss in (B*T)
         '''
+        q_ = torch.argmax(q, dim=2)
+        return self._reconstruction_loss(p, q_) - self._reconstruction_loss(q, q_)
+    
+    def _JSD_loss(self, q, p):
+        '''
+        Calculate Jensen–Shannon divergence loss between q and p 
+        JSD(p|q) = 1/2*KL(P|M) + 1/2*KL(Q|M)
+        q: (B, T, V) xxxx <eos> 
+        p: (B, T, V)  xxxx <eos>
 
-        p_pm, _ = self._get_padding_mask(p_src, p_src)
-
-        if hard:
-            q_ = straight_through_softmax(q)
-            p_ = straight_through_softmax(p)
-            log_p = F.log_softmax(p_, dim=2)
-            loss = -(log_p * q_).sum(2).contiguous().view(-1) * (1 - p_pm.int()).contiguous().view(-1)
-        else:
-            log_p = F.log_softmax(p, dim=2)
-            loss = -(log_p * q).sum(2).contiguous().view(-1) * (1 - p_pm.int()).contiguous().view(-1)
-            
-
-        return loss
+        Returns: loss in (B*T)
+        '''
+        m = 0.5*(q+p)
+        return 0.5 * self._KL_loss(q, m) + 0.5 * self._KL_loss(p, m) 

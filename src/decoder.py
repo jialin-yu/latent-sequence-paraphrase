@@ -45,6 +45,7 @@ class Decoder(nn.Module):
             trg = self.dropout(((trg.double() @ self.tok_emb.weight.double())* self.scale) + self.pos_emb(pos))
             y_ = self.decoder(trg.float(), src_memory, trg_m, trg_src_m, trg_pm, src_memory_pm)
             # print('This line okayy')
-            y_ = F.softmax(self.linear(y_), dim=-1)
+            y_ = self.linear(y_)
+            # y_ = F.softmax(self.linear(y_), dim=-1)
         
         return y_

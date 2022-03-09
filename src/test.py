@@ -25,14 +25,9 @@ def main():
         '-ts', '--test_size', type=int, default=3000)
     
     parser.add_argument(
-        '-loss', '--batch_loss', type=bool, default=False)
-    parser.add_argument(
-        '-lh', '--latent_hard', type=bool, default=True)
+        '-lh', '--latent_hard', type=bool, default=False)
     parser.add_argument(
         '-hl', '--hard_loss', type=bool, default=False)
-
-    parser.add_argument(
-        '-e', '--unsupervised', type=bool, default=True)
     
     parser.add_argument(
         '-gum', '--gumbel_max', type=bool, default=True)
@@ -41,7 +36,7 @@ def main():
         '-plm', '--use_pretrain_lm', type=bool, default=True)
 
     parser.add_argument(
-        '-up', '--use_pseudo', type=bool, default=False)
+        '-up', '--use_pseudo', type=bool, default=True)
 
     # LM experiment
     parser.add_argument(
@@ -49,12 +44,12 @@ def main():
     parser.add_argument(
         '-lmme', '--lm_max_epoch', type=int, default=5)
     parser.add_argument(
-        '-lmlr', '--lm_lr', type=int, default=10)
+        '-lmlr', '--lm_lr', type=int, default=1e-4)
 
     parser.add_argument(
         '-vaedir', '--vae_dir', type=str, default='../model/vae/')
     parser.add_argument(
-        '-vaeme', '--vae_max_epoch', type=int, default=10)
+        '-vaeme', '--vae_max_epoch', type=int, default=5)
     parser.add_argument(
         '-vaelr', '--vae_lr', type=int, default=1e-4)
 
@@ -87,9 +82,9 @@ def main():
 
     configs = Configs(**vars(args))
     interface = Trainer(configs)
-    # interface.main_lm()
+    interface.main_lm()
     # interface.main_vae()
-    interface.main_seq2seq()
+    # interface.main_seq2seq()
     # interface.main_semi_supervised()
 
 

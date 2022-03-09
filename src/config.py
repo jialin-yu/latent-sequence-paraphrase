@@ -37,15 +37,15 @@ class Configs(object):
             setattr(self, name, value)
 
         if self.lm_dir:
-            lm_name = f'seed_{self.seed}_hardloss_{self.hard_loss}_batchloss_{self.batch_loss}_unsupervised_{self.unsupervised}_pseudo_{self.use_pseudo}'
-            self.lm_id = lm_name
+            lm_id = f'data_{self.data}_trainsize_{self.un_train_size}_lr_{self.lm_lr}_seed_{self.seed}_hardloss_{self.hard_loss}_pseudo_{self.use_pseudo}'
+            self.lm_id = lm_id
 
         if self.vae_dir:
-            vae_name = f'seed_{self.seed}_hardloss_{self.hard_loss}_batchloss_{self.batch_loss}_unsupervised_{self.unsupervised}_pseudo_{self.use_pseudo}_hardlatent_{self.latent_hard}_gumbelmax_{self.gumbel_max}'
-            self.vae_id = lm_name
+            vae_id = f'data_{self.data}_seed_{self.seed}_hardloss_{self.hard_loss}_pseudo_{self.use_pseudo}_hardlatent_{self.latent_hard}_gumbelmax_{self.gumbel_max}'
+            self.vae_id = vae_id
 
         if self.seq2seq_dir:
-            seq2seq_name = f'seed_{self.seed}_hardloss_{self.hard_loss}_batchloss_{self.batch_loss}'
-            self.seq2seq_id = seq2seq_name
+            seq2seq_id = f'data_{self.data}_trainsize_{self.train_size}_lr_{self.seq2seq_lr}_seed_{self.seed}_epoch_{self.seq2seq_max_epoch}'
+            self.seq2seq_id = seq2seq_id
 
 

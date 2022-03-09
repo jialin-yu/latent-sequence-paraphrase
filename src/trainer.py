@@ -42,11 +42,13 @@ class Trainer(object):
         self.configs.vocab_size = len(self.vocab)
         print(f'{"-"*20} Data Description {"-"*20}')
         print(f'Use {self.configs.un_train_size} unsupervised data; {self.configs.train_size} training data; {self.configs.valid_size} validation data and {self.configs.test_size} testing data.')
+        print(f'{"-"*40}')
 
         self.model = Transformer(self.configs)
         self.model.to(self.device)
         print(f'{"-"*20} Model Description {"-"*20}')
         print(f'Set model as {self._count_parameters(self.model)} parameters')
+        print(f'{"-"*40}')
     
     def main_inference(self, dataloader, vocab):
 
@@ -84,6 +86,7 @@ class Trainer(object):
         grad_clip = self.configs.grad_clip
         seed = self.configs.seed
         experiment_id = self.configs.lm_id
+        use_pseudo = self.configs.use_pseudo
 
         print(f'{"-"*20} Initialise LM experiment {"-"*20}')
         print(f'Use model directory {model_dir}')
@@ -92,6 +95,10 @@ class Trainer(object):
         print(f'Use gradient clip of {grad_clip}')
         print(f'Use seed of {seed}')
         print(f'Experiment id as {experiment_id}')
+        if use_pseudo:
+            print(f'LM train with psedo data.')
+        else:
+            print(f'LM train without psedo data.')
         print(f'Total model parameters {self._count_parameters(self.model.prior)}')
         print(f'{"-"*40}')
 
@@ -103,7 +110,7 @@ class Trainer(object):
         EXP_START = time.time()
         best_valid_loss = float('inf')
         for epoch in range(max_epoch):
-            train_loss = self._train_lm(self.train_data, optimizer, grad_clip)
+            train_loss = self._train_lm(self.un_data, optimizer, grad_clip)
             valid_loss = self._evaluate_lm(self.valid_data)
             print(f'{"-"*20} Epoch {epoch + 1}/{max_epoch} training done {"-"*20}')
             if valid_loss < best_valid_loss:
@@ -166,49 +173,65 @@ class Trainer(object):
 
     def main_vae(self):
         lm_dir = self.configs.lm_dir
-        lm_name = self.configs.lm_id
-        
-        if self.configs.use_pretrain_lm:
-            self._load_model(self.model, lm_dir, lm_name)
+        lm_id = self.configs.lm_id
 
         model_dir = self.configs.vae_dir
-        vae_name = self.configs.vae_id
         max_epoch = self.configs.vae_max_epoch
         lr = self.configs.vae_lr
         grad_clip = self.configs.grad_clip
         seed = self.configs.seed
+        experiment_id = self.configs.vae_id
+
+        if self.configs.use_pretrain_lm:
+            self._load_model(self.model, lm_dir, lm_id)
         
         factor = 1
-        high_temp = 3
-        low_temp = 0.5
+        # temperature guildine from https://sassafras13.github.io/GumbelSoftmax/
+        high_temp = 5
+        low_temp = 0.1 # mostly one-hot format
         temperature = list(np.linspace(high_temp, low_temp, max_epoch))
 
-        print(f'Set VAE experiment seed as: {seed}')
-        self._set_experiment_seed(seed)
+        print(f'{"-"*20} Initialise VAE experiment {"-"*20}')
+        print(f'Use model directory {model_dir}')
+        print(f'Experiment run for max {max_epoch} epochs')
+        print(f'Learning rate set as {lr}')
+        print(f'Use gradient clip of {grad_clip}')
+        print(f'Use seed of {seed}')
+        print(f'Experiment id as {experiment_id}')
+        
+        if self.configs.use_pretrain_lm:
+            print(f'Use pre-trained LM from dir {lm_dir} and id {lm_id}')
+        else:
+            print(f'No pre-trained LM used')
 
-        self.model.prior.apply(self._xavier_initialize)
-        optimizer = torch.optim.Adam(self.model.parameters(), lr = lr)
+        print(f'Total model parameters {self._count_parameters(self.model)-self._count_parameters(self.model.prior)} ')
+        print(f'Set high temperate as {high_temp} amd low temperature as {low_temp}')
+        print(f'Training with beta factor of {factor}')
+        print(f'{"-"*40}')
+
+        
+        self._set_experiment_seed(seed)
+        self.model.src_encoder.apply(self._xavier_initialize)
+        self.model.trg_decoder.apply(self._xavier_initialize)
+        self.model.trg_encoder.apply(self._xavier_initialize)
+        self.model.src_decoder.apply(self._xavier_initialize)
+        params = list(self.model.src_encoder.parameters()) + list(self.model.trg_decoder.parameters()) + list(self.model.trg_encoder.parameters()) + list(self.model.src_decoder.parameters())
+        optimizer = torch.optim.Adam(params, lr=lr)
         
         EXP_START = time.time()
         best_valid_loss = float('inf')
         for epoch in range(max_epoch):
-            train_loss = self._train_vae(self.train_data, optimizer, grad_clip, temperature[epoch], factor)
-            
-            print(f'{"-"*20} Epoch {epoch + 1}/{max_epoch} training done {"-"*20}')
-
+            train_loss = self._train_vae(self.un_data, optimizer, grad_clip, temperature[epoch], factor)
             valid_loss = self._evaluate_vae(self.valid_data, low_temp)
-            
-            print(f'{"-"*20} Epoch {epoch + 1}/{max_epoch} evaluation done {"-"*20}')
-            
+            print(f'{"-"*20} Epoch {epoch + 1}/{max_epoch} training done {"-"*20}')
             if valid_loss < best_valid_loss:
                 best_valid_loss = valid_loss 
-                self._save_model(self.model, model_dir, vae_name)
+                self._save_model(self.model, model_dir, experiment_id)
                 print(f'Save model in epoch {epoch + 1}.')
         
-        print(f'{"-"*40}')
-        print('Retrieve best model for testing')
-        self._load_model(self.model, model_dir, vae_name)
-        self.model.prior.to(self.device)
+        print(f'{"-"*20} Retrieve best model for testing {"-"*20}')
+        self._load_model(self.model, model_dir, experiment_id)
+        self.model.to(self.device)
         valid_loss = self._evaluate_vae(self.test_data, low_temp)
         print(f'VAE experiment done in {time.time() - EXP_START}s.')
 
@@ -353,40 +376,26 @@ class Trainer(object):
         
         log_inter = len(dataloader) // 5
         for idx, (src, trg, src_) in enumerate(tqdm(dataloader)):
-            optimizer.zero_grad()
-
-            if self.configs.unsupervised:
+            optimizer.zero_grad()          
                 
-                if self.configs.use_pseudo:
+            if self.configs.use_pseudo:
 
-                    output = self.model.decode_lm(self.model.prior, src_[:, :-1], True)         
-                    b_loss = self.model._batch_reconstruct_error(output, src_[:, 1:], self.configs.hard_loss)
-                    i_loss = self.model._instance_reconstruct_error(output, src_[:, 1:], self.configs.hard_loss)
+                output = self.model.decode_lm(self.model.prior, src_[:, :-1], True)         
+                loss = self.model._reconstruction_loss(output, src_[:, 1:], self.configs.hard_loss)
 
-                else:
+            else:
                     
-                    output = self.model.decode_lm(self.model.prior, src[:, :-1], True)         
-                    b_loss = self.model._batch_reconstruct_error(output, src[:, 1:], self.configs.hard_loss)
-                    i_loss = self.model._instance_reconstruct_error(output, src[:, 1:], self.configs.hard_loss)
+                output = self.model.decode_lm(self.model.prior, src[:, :-1], True)         
+                loss = self.model._reconstruction_loss(output, src[:, 1:], self.configs.hard_loss)
 
-            else:
-                
-                output = self.model.decode_lm(self.model.prior, trg[:, :-1], True)         
-                b_loss = self.model._batch_reconstruct_error(output, trg[:, 1:], self.configs.hard_loss)
-                i_loss = self.model._instance_reconstruct_error(output, trg[:, 1:], self.configs.hard_loss)
             
-            b_loss = torch.mean(b_loss)
-            i_loss = torch.mean(i_loss)
-
-            if self.configs.batch_loss: 
-                b_loss.backward()
-            else:
-                i_loss.backward()
+            loss = torch.mean(loss)
+            loss.backward()
 
             torch.nn.utils.clip_grad_norm_(self.model.prior.parameters(), grad_clip)
             optimizer.step()
 
-            epoch_loss += i_loss.item()
+            epoch_loss += loss.item()
             if idx % log_inter == 0 and idx > 0:
                 print(f'| Batches: {idx}/{len(dataloader)} | Running Loss: {epoch_loss/(idx+1)} | PPL: {math.exp(epoch_loss/(idx+1))} |')
         elapsed = time.time() - start_time
@@ -399,21 +408,15 @@ class Trainer(object):
         start_time = time.time()
         for idx, (src, trg, src_) in enumerate(tqdm(dataloader)):
             
-            if self.configs.unsupervised:
+            if self.configs.use_pseudo:
 
-                if self.configs.use_pseudo:
+                output = self.model.decode_lm(self.model.prior, src_[:, :-1], True)         
+                loss = self.model._reconstruction_loss(output, src_[:, 1:], self.configs.hard_loss)
 
-                    output = self.model.decode_lm(self.model.prior, src_[:, :-1], True)         
-                    loss = self.model._instance_reconstruct_error(output, src_[:, 1:], self.configs.hard_loss)
-
-                else:
-
-                    output = self.model.decode_lm(self.model.prior, src[:, :-1], True)         
-                    loss = self.model._instance_reconstruct_error(output, src[:, 1:], self.configs.hard_loss)
             else:
 
-                output = self.model.decode_lm(self.model.prior, trg[:, :-1], True)         
-                loss = self.model._instance_reconstruct_error(output, trg[:, 1:], self.configs.hard_loss)
+                output = self.model.decode_lm(self.model.prior, src[:, :-1], True)         
+                loss = self.model._reconstruction_loss(output, src[:, 1:], self.configs.hard_loss)
                 
             batch_loss = torch.mean(loss)
             epoch_loss += batch_loss.item()
@@ -425,7 +428,6 @@ class Trainer(object):
 
     def _train_vae(self, dataloader, optimizer, grad_clip, temperature=None, factor=1):
         self.model.train()
-        self.model.prior.eval() # freeze parameter for prior
         epoch_total_loss, epoch_rec_loss, epoch_kl_loss = 0, 0, 0
         start_time = time.time()
         
@@ -433,96 +435,66 @@ class Trainer(object):
         for idx, (src, trg, src_) in enumerate(tqdm(dataloader)):
             optimizer.zero_grad()
 
-            '''
-            reconstruction of src
+            if self.configs.use_pseudo:
 
-            sampling based decode, return trg_ (B, S, V) in normalised form
-            
-            '''
-            if self.configs.unsupervised: 
-
-                if self.configs.use_pseudo:
-                    # trg_ (B, S, V)
-                    trg_ = self.model.encode_sample_decode(self.model.src_encoder, self.model.trg_decoder, 
+                # trg_ (B, S, V)
+                trg_ = self.model.encode_sample_decode(self.model.src_encoder, self.model.trg_decoder, 
                         src, src_, self.configs.latent_hard, self.configs.gumbel_max, temperature) 
-                else:
-                    trg_ = self.model.encode_sample_decode(self.model.src_encoder, self.model.trg_decoder, 
-                        src, src, self.configs.latent_hard, self.configs.gumbel_max, temperature)
+            
             else:
 
                 trg_ = self.model.encode_sample_decode(self.model.src_encoder, self.model.trg_decoder, 
-                    src, trg, self.configs.latent_hard, self.configs.gumbel_max, temperature)
+                        src, src, self.configs.latent_hard, self.configs.gumbel_max, temperature)
             
             # src__ (B, S-1, V)
             src__ = self.model.encode_and_decode(self.model.trg_encoder, self.model.src_decoder,
-                trg_, src[:,1:], False)
+                trg_, src[:,:-1], False)
+
+            rec_loss = self.model._reconstruction_loss(src__, src[:, 1:], False)
             
             # calculate reconstruction loss between src and src__
-            if self.configs.unsupervised: 
+            
+            
                 
-                if self.configs.use_pretrain_lm:
+            if self.configs.use_pretrain_lm:
                 
-                    if self.configs.use_pseudo:
+                if self.configs.use_pseudo:
 
-                        p_trg = self.model.decode_lm(self.model.prior, src_[:, :-1], True)
-                        p_trg_ = src_[:, 1:]
+                    p_trg = self.model.decode_lm(self.model.prior, src_[:, :-1], True)
+                    p_trg = F.softmax(p_trg, dim=2)
                     
-                    else:
-                    
-                        p_trg = self.model.decode_lm(self.model.prior, src[:, :-1], True)
-                        p_trg_ = src[:, 1:]
-
                 else:
-
-                    if self.configs.use_pseudo:
-
-                        p_trg = F.one_hot(src_[:, 1:], self.configs.vocab_size)
-                        p_trg_ = src_[:, 1:]
                     
-                    else:
-                    
-                        p_trg = F.one_hot(src[:, 1:], self.configs.vocab_size)
-                        p_trg_ = src[:, 1:]
+                    p_trg = self.model.decode_lm(self.model.prior, src[:, :-1], True)
+                    p_trg = F.softmax(p_trg, dim=2)
 
             else:
 
-                if self.configs.use_pretrain_lm:
+                if self.configs.use_pseudo:
+
+                    p_trg = F.one_hot(src_[:, 1:], self.configs.vocab_size)
                     
-                    p_trg = self.model.decode_lm(self.model.prior, trg[:, :-1], True)
-                
                 else:
                     
-                    p_trg = F.one_hot(trg[:, 1:], self.configs.vocab_size)
-                
-                p_trg_ = trg[:, 1:]
+                    p_trg = F.one_hot(src[:, 1:], self.configs.vocab_size)
 
             q_trg = trg_[:, 1:]
+            
+            kl_loss = self.model._KL_loss(q_trg, p_trg)
 
+            loss = torch.mean(rec_loss) + factor * torch.mean(kl_loss)
+            loss.backward()
 
-            b_rec_loss = self.model._batch_reconstruct_error(src__, src[:, 1:], self.configs.hard_loss)
-            i_rec_loss = self.model._instance_reconstruct_error(src__, src[:, 1:], self.configs.hard_loss)
-             
-            b_kl_loss = self.model._batch_cross_entropy(q_trg, p_trg, p_trg_, self.configs.hard_loss)
-            i_kl_loss = self.model._instance_cross_entropy(q_trg, p_trg, p_trg_, self.configs.hard_loss)
+            torch.nn.utils.clip_grad_norm_(self.model.src_encoder.parameters(), grad_clip)
+            torch.nn.utils.clip_grad_norm_(self.model.trg_decoder.parameters(), grad_clip)
+            torch.nn.utils.clip_grad_norm_(self.model.trg_encoder.parameters(), grad_clip)
+            torch.nn.utils.clip_grad_norm_(self.model.src_decoder.parameters(), grad_clip)
 
-            # print(i_kl_loss.size())
-
-            # print(i_rec_loss.size())
-
-            b_loss = torch.mean(b_rec_loss) + torch.mean(factor * b_kl_loss)
-            i_loss = torch.mean(i_rec_loss) + torch.mean(factor * i_kl_loss)
-
-            if self.configs.batch_loss: 
-                b_loss.backward()
-            else:
-                i_loss.backward()
-
-            torch.nn.utils.clip_grad_norm_(self.model.parameters(), grad_clip)
             optimizer.step()
 
-            epoch_total_loss += i_loss.item()
-            epoch_rec_loss += torch.mean(i_rec_loss).item()
-            epoch_kl_loss += torch.mean(i_kl_loss).item()
+            epoch_total_loss += loss.item()
+            epoch_rec_loss += torch.mean(rec_loss).item()
+            epoch_kl_loss += torch.mean(kl_loss).item()
 
             if idx % log_inter == 0 and idx > 0:
                 print(f'| Batches: {idx}/{len(dataloader)} | PPL: {math.exp(epoch_rec_loss/(idx+1))} |')
@@ -537,99 +509,58 @@ class Trainer(object):
         epoch_total_loss, epoch_rec_loss, epoch_kl_loss = 0, 0, 0
         start_time = time.time()
         
-        log_inter = len(dataloader) // 5
         for idx, (src, trg, src_) in enumerate(tqdm(dataloader)):
 
-            '''
-            reconstruction of src
+            if self.configs.use_pseudo:
 
-            sampling based decode, return trg_ (B, S, V) in normalised form
-            
-            '''
-            if self.configs.unsupervised: 
-
-                if self.configs.use_pseudo:
-                    # trg_ (B, S, V)
-                    trg_ = self.model.encode_sample_decode(self.model.src_encoder, self.model.trg_decoder, 
+                # trg_ (B, S, V)
+                trg_ = self.model.encode_sample_decode(self.model.src_encoder, self.model.trg_decoder, 
                         src, src_, self.configs.latent_hard, self.configs.gumbel_max, temperature) 
-                else:
-                    trg_ = self.model.encode_sample_decode(self.model.src_encoder, self.model.trg_decoder, 
-                        src, src, self.configs.latent_hard, self.configs.gumbel_max, temperature)
+            
             else:
 
                 trg_ = self.model.encode_sample_decode(self.model.src_encoder, self.model.trg_decoder, 
-                    src, trg, self.configs.latent_hard, self.configs.gumbel_max, temperature)
+                        src, src, self.configs.latent_hard, self.configs.gumbel_max, temperature)
             
             # src__ (B, S-1, V)
             src__ = self.model.encode_and_decode(self.model.trg_encoder, self.model.src_decoder,
-                trg_, src[:,1:], False)
-            
-            # calculate reconstruction loss between src and src__
-            if self.configs.unsupervised: 
-                
-                if self.configs.use_pretrain_lm:
-                
-                    if self.configs.use_pseudo:
+                trg_, src[:,:-1], False)
 
-                        p_trg = self.model.decode_lm(self.model.prior, src_[:, :-1], True)
-                        p_trg_ = src_[:, 1:]
-                    
-                    else:
-                    
-                        p_trg = self.model.decode_lm(self.model.prior, src[:, :-1], True)
-                        p_trg_ = src[:, 1:]
+            rec_loss = self.model._reconstruction_loss(src__, src[:, 1:], False)
+                
+            if self.configs.use_pretrain_lm:
+                
+                if self.configs.use_pseudo:
 
+                    p_trg = self.model.decode_lm(self.model.prior, src_[:, :-1], True)
+                    
                 else:
-
-                    if self.configs.use_pseudo:
-
-                        p_trg = F.one_hot(src_[:, 1:], self.configs.vocab_size)
-                        p_trg_ = src_[:, 1:]
                     
-                    else:
-                    
-                        p_trg = F.one_hot(src[:, 1:], self.configs.vocab_size)
-                        p_trg_ = src[:, 1:]
+                    p_trg = self.model.decode_lm(self.model.prior, src[:, :-1], True)
 
             else:
 
-                if self.configs.use_pretrain_lm:
+                if self.configs.use_pseudo:
+
+                    p_trg = F.one_hot(src_[:, 1:], self.configs.vocab_size)
                     
-                    p_trg = self.model.decode_lm(self.model.prior, trg[:, :-1], True)
-                
                 else:
                     
-                    p_trg = F.one_hot(trg[:, 1:], self.configs.vocab_size)
-                
-                p_trg_ = trg[:, 1:]
+                    p_trg = F.one_hot(src[:, 1:], self.configs.vocab_size)
 
             q_trg = trg_[:, 1:]
+            
+            kl_loss = self.model._KL_loss(q_trg, p_trg)
 
-
-            # b_rec_loss = self.model._batch_reconstruct_error(src__, src[:, 1:], self.configs.hard_loss)
-            rec_loss = self.model._instance_reconstruct_error(src__, src[:, 1:], self.configs.hard_loss)
-             
-            # b_kl_loss = self.model._batch_cross_entropy(q_trg, p_trg, p_trg_, self.configs.hard_loss)
-            kl_loss = self.model._instance_cross_entropy(q_trg, p_trg, p_trg_, self.configs.hard_loss)
-         
-            loss = torch.mean(rec_loss) + torch.mean(factor * kl_loss)
-            # i_loss = torch.mean(i_rec_loss + factor * i_kl_loss)
-
-            # if self.configs.batch_loss: 
-            #     b_loss.backward()
-            # else:
-            #     i_loss.backward()
-
-            # torch.nn.utils.clip_grad_norm_(self.model.parameters(), grad_clip)
-            # optimizer.step()
+            loss = torch.mean(rec_loss) + factor * torch.mean(kl_loss)
 
             epoch_total_loss += loss.item()
             epoch_rec_loss += torch.mean(rec_loss).item()
             epoch_kl_loss += torch.mean(kl_loss).item()
 
         
-        print(f'| Batches: {idx}/{len(dataloader)} | PPL: {math.exp(epoch_rec_loss/(idx+1))} |')
-        print(f'| REC Loss: {epoch_rec_loss/(idx+1)} | KL Loss: {epoch_kl_loss/(idx+1)} | Total Loss: {epoch_total_loss/(idx+1)} |')
+        print(f'| PPL: {math.exp(epoch_rec_loss/(idx+1))} | Total Loss: {epoch_total_loss/(idx+1)} |')
+        print(f'| REC Loss: {epoch_rec_loss/(idx+1)} | KL Loss: {epoch_kl_loss/(idx+1)} |')
         
         elapsed = time.time() - start_time
         print(f'Epoch evaluation time is: {elapsed}s.')

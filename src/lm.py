@@ -34,14 +34,17 @@ class LanguageModel(nn.Module):
             B, S = x.size()
             pos = torch.arange(0, S).unsqueeze(0).repeat(B, 1).to(self.device)
             x = self.dropout((self.tok_emb(x) * self.scale) + self.pos_emb(pos))
-            x_ = self.encoder(x, x_m, x_pm)  
-            x_ = F.softmax(self.linear(x_), dim=-1)
+            x_ = self.encoder(x, x_m, x_pm)
+            x_ = self.linear(x_)
+
+            # x_ = F.softmax(self.linear(x_), dim=-1)
         else:
             B, S, _ = x.size()
             pos = torch.arange(0, S).unsqueeze(0).repeat(B, 1).to(self.device)
             # x = self.dropout((x.double() @ self.tok_emb.weight * self.scale) + self.pos_emb(pos))
             x = self.dropout(((x.double() @ self.tok_emb.weight.double())* self.scale) + self.pos_emb(pos))
             x_ = self.encoder(x.float(), x_m, x_pm)  
-            x_ = F.softmax(self.linear(x_), dim=-1)
+            # x_ = F.softmax(self.linear(x_), dim=-1)
+            x_ = self.linear(x_)
         
         return x_
