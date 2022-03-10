@@ -17,6 +17,13 @@ def straight_through_softmax(logits):
     y_hard = y_hard.view(*shape)
     return (y_hard - y).detach() + y
 
+def straight_through_logits(logits):
+    y = logits
+    shape = logits.size()
+    mask = F.one_hot(torch.argmax(logits, dim=-1), shape[-1])
+    y_hard = mask*logits
+    return (y_hard - y).detach() + y
+
 def sample_gumbel(shape, eps=1e-20):
     U = torch.rand(shape).cuda()
     return -torch.log(-torch.log(U + eps) + eps)

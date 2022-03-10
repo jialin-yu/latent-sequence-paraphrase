@@ -30,13 +30,13 @@ def main():
         '-hl', '--hard_loss', type=bool, default=False)
     
     parser.add_argument(
-        '-gum', '--gumbel_max', type=bool, default=True)
+        '-gum', '--gumbel_max', type=bool, default=False)
     
     parser.add_argument(
         '-plm', '--use_pretrain_lm', type=bool, default=True)
 
     parser.add_argument(
-        '-up', '--use_pseudo', type=bool, default=True)
+        '-up', '--use_pseudo', type=bool, default=False)
 
     # LM experiment
     parser.add_argument(
@@ -82,8 +82,8 @@ def main():
 
     configs = Configs(**vars(args))
     interface = Trainer(configs)
-    interface.main_lm()
-    # interface.main_vae()
+    # interface.main_lm()
+    interface.main_vae()
     # interface.main_seq2seq()
     # interface.main_semi_supervised()
 

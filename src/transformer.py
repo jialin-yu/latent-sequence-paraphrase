@@ -7,7 +7,7 @@ from encoder import Encoder
 from decoder import Decoder
 from lm import LanguageModel
 
-from sample import straight_through_softmax, gumbel_softmax, gumbel_softmax_sample
+from sample import straight_through_softmax, gumbel_softmax, gumbel_softmax_sample, straight_through_logits
     
 
 class Transformer(nn.Module):
@@ -228,7 +228,7 @@ class Transformer(nn.Module):
         B, _, V = src.size()
 
         if hard_loss:
-            src = straight_through_softmax(src)
+            src = straight_through_logits(src)
         
         loss = self.loss(src.contiguous().view(-1, V), trg.contiguous().view(-1))
         

@@ -24,7 +24,7 @@ class Configs(object):
 
         self.max_len = 150
 
-        self.batch_size = 16
+        self.batch_size = 8
         self.vocab_size = None
 
         self.inf = float('inf')
