@@ -438,12 +438,12 @@ class Trainer(object):
             if self.configs.use_pseudo:
 
                 # trg_ (B, S, V)
-                trg_ = self.model.encode_sample_decode(self.model.src_encoder, self.model.trg_decoder, 
+                trg_, trg_logit = self.model.encode_sample_decode(self.model.src_encoder, self.model.trg_decoder, 
                         src, src_, self.configs.latent_hard, self.configs.gumbel_max, temperature) 
             
             else:
 
-                trg_ = self.model.encode_sample_decode(self.model.src_encoder, self.model.trg_decoder, 
+                trg_, trg_logit = self.model.encode_sample_decode(self.model.src_encoder, self.model.trg_decoder, 
                         src, src, self.configs.latent_hard, self.configs.gumbel_max, temperature)
             
             # src__ (B, S-1, V)
@@ -478,7 +478,7 @@ class Trainer(object):
                     
                     p_trg = F.one_hot(src[:, 1:], self.configs.vocab_size)
 
-            q_trg = trg_[:, 1:]
+            q_trg = trg_logit
             
             kl_loss = self.model._KL_loss(q_trg, p_trg)
 
@@ -514,12 +514,12 @@ class Trainer(object):
             if self.configs.use_pseudo:
 
                 # trg_ (B, S, V)
-                trg_ = self.model.encode_sample_decode(self.model.src_encoder, self.model.trg_decoder, 
+                trg_, trg_logit = self.model.encode_sample_decode(self.model.src_encoder, self.model.trg_decoder, 
                         src, src_, self.configs.latent_hard, self.configs.gumbel_max, temperature) 
             
             else:
 
-                trg_ = self.model.encode_sample_decode(self.model.src_encoder, self.model.trg_decoder, 
+                trg_, trg_logit = self.model.encode_sample_decode(self.model.src_encoder, self.model.trg_decoder, 
                         src, src, self.configs.latent_hard, self.configs.gumbel_max, temperature)
             
             # src__ (B, S-1, V)
@@ -548,7 +548,7 @@ class Trainer(object):
                     
                     p_trg = F.one_hot(src[:, 1:], self.configs.vocab_size)
 
-            q_trg = trg_[:, 1:]
+            q_trg = trg_logit
             
             kl_loss = self.model._KL_loss(q_trg, p_trg)
 

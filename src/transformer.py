@@ -126,6 +126,7 @@ class Transformer(nn.Module):
 
         RETURN: 
         trg_ (B, T, V) <bos> y_ <eos>
+        trg_logits (B, T-1, V) y_ <eos>
         '''
         _, T = trg.size()
         
@@ -165,7 +166,7 @@ class Transformer(nn.Module):
         # print(trg.size())
         assert dec_temp.size()[:-1] == trg.size()
         # out = torch.cat((dec_temp, dec_out), dim=1)
-        return dec_temp
+        return dec_temp, dec_out
     
     def encode_and_decode(self, encoder, decoder, src, trg, src_hard=True):
         '''

@@ -16,9 +16,9 @@ def main():
     parser.add_argument(
         '-mv', '--max_vocab', type=int, default=None)
     parser.add_argument(
-        '-utrs', '--un_train_size', type=int, default=50000)
+        '-utrs', '--un_train_size', type=int, default=15000)
     parser.add_argument(
-        '-trs', '--train_size', type=int, default=20000)
+        '-trs', '--train_size', type=int, default=10000)
     parser.add_argument(
         '-vs', '--valid_size', type=int, default=1000)
     parser.add_argument(
@@ -30,7 +30,7 @@ def main():
         '-hl', '--hard_loss', type=bool, default=False)
     
     parser.add_argument(
-        '-gum', '--gumbel_max', type=bool, default=False)
+        '-gum', '--gumbel_max', type=bool, default=True)
     
     parser.add_argument(
         '-plm', '--use_pretrain_lm', type=bool, default=True)
@@ -82,7 +82,7 @@ def main():
 
     configs = Configs(**vars(args))
     interface = Trainer(configs)
-    # interface.main_lm()
+    interface.main_lm()
     interface.main_vae()
     # interface.main_seq2seq()
     # interface.main_semi_supervised()
