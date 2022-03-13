@@ -16,7 +16,7 @@ def main():
     parser.add_argument(
         '-mv', '--max_vocab', type=int, default=None)
     parser.add_argument(
-        '-utrs', '--un_train_size', type=int, default=15000)
+        '-utrs', '--un_train_size', type=int, default=10000)
     parser.add_argument(
         '-trs', '--train_size', type=int, default=10000)
     parser.add_argument(
@@ -30,7 +30,7 @@ def main():
         '-hl', '--hard_loss', type=bool, default=False)
     
     parser.add_argument(
-        '-gum', '--gumbel_max', type=bool, default=True)
+        '-gum', '--gumbel_max', type=bool, default=False)
     
     parser.add_argument(
         '-plm', '--use_pretrain_lm', type=bool, default=True)
@@ -56,12 +56,16 @@ def main():
     parser.add_argument(
         '-seq2seqdir', '--seq2seq_dir', type=str, default='../model/seq2seq/')
     parser.add_argument(
-        '-seq2seqme', '--seq2seq_max_epoch', type=int, default=5)
+        '-seq2seqme', '--seq2seq_max_epoch', type=int, default=10)
     parser.add_argument(
         '-seq2seqlr', '--seq2seq_lr', type=int, default=1e-4)
 
     parser.add_argument(
         '-semidir', '--semi_dir', type=str, default='../model/semi/')
+    parser.add_argument(
+        '-semime', '--semi_max_epoch', type=int, default=5)
+    parser.add_argument(
+        '-semilr', '--semi_lr', type=int, default=1e-4)
     
     
     
@@ -82,10 +86,10 @@ def main():
 
     configs = Configs(**vars(args))
     interface = Trainer(configs)
-    interface.main_lm()
-    interface.main_vae()
+    # interface.main_lm()
+    # interface.main_vae()
     # interface.main_seq2seq()
-    # interface.main_semi_supervised()
+    interface.main_semi_supervised()
 
 
 if __name__ == "__main__":

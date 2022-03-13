@@ -185,7 +185,7 @@ class Trainer(object):
         if self.configs.use_pretrain_lm:
             self._load_model(self.model, lm_dir, lm_id)
         
-        factor = 1
+        beta_factor = 1
         # temperature guildine from https://sassafras13.github.io/GumbelSoftmax/
         high_temp = 5
         low_temp = 0.1 # mostly one-hot format
@@ -206,7 +206,7 @@ class Trainer(object):
 
         print(f'Total model parameters {self._count_parameters(self.model)-self._count_parameters(self.model.prior)} ')
         print(f'Set high temperate as {high_temp} amd low temperature as {low_temp}')
-        print(f'Training with beta factor of {factor}')
+        print(f'Training with beta factor of {beta_factor}')
         print(f'{"-"*40}')
 
         
@@ -221,9 +221,9 @@ class Trainer(object):
         EXP_START = time.time()
         best_valid_loss = float('inf')
         for epoch in range(max_epoch):
-            train_loss = self._train_vae(self.un_data, optimizer, grad_clip, temperature[epoch], factor)
-            valid_loss = self._evaluate_vae(self.valid_data, low_temp)
-            print(f'{"-"*20} Epoch {epoch + 1}/{max_epoch} training done {"-"*20}')
+            train_loss = self._train_vae(self.un_data, optimizer, grad_clip, temperature[epoch], beta_factor)
+            valid_loss = self._evaluate_vae(self.valid_data, temperature[epoch], beta_factor)
+            print(f'{"-"*20} Epoch {epoch + 1}/{max_epoch} training done {"-"*20}') 
             if valid_loss < best_valid_loss:
                 best_valid_loss = valid_loss 
                 self._save_model(self.model, model_dir, experiment_id)
@@ -237,51 +237,73 @@ class Trainer(object):
 
     def main_semi_supervised(self):
         lm_dir = self.configs.lm_dir
-        lm_name = self.configs.lm_id
-        
-        if self.configs.use_pretrain_lm:
-            self._load_model(self.model, lm_dir, lm_name)
+        lm_id = self.configs.lm_id
 
         model_dir = self.configs.semi_dir
-        vae_name = self.configs.vae_id
-        max_epoch = self.configs.vae_max_epoch
-        lr = self.configs.vae_lr
-        grad_clip = self.configs.gc
+        max_epoch = self.configs.semi_max_epoch
+        lr = self.configs.semi_lr
+        grad_clip = self.configs.grad_clip
         seed = self.configs.seed
+        experiment_id = self.configs.semi_id
+        
+        if self.configs.use_pretrain_lm:
+            self._load_model(self.model, lm_dir, lm_id)
 
-        factor = 1
-        high_temp = 3
-        low_temp = 0.5
+        alpha_factor = 0.5
+        beta_factor = 0.5
+        high_temp = 5
+        low_temp = 0.1
         temperature = list(np.linspace(high_temp, low_temp, max_epoch))
 
-        print(f'Set SEMI experiment seed as: {seed}')
-        self._set_experiment_seed(seed)
+        print(f'{"-"*20} Initialise SEMI experiment {"-"*20}')
+        print(f'Use model directory {model_dir}')
+        print(f'Experiment run for max {max_epoch} epochs')
+        print(f'Learning rate set as {lr}')
+        print(f'Use gradient clip of {grad_clip}')
+        print(f'Use seed of {seed}')
+        print(f'Experiment id as {experiment_id}')
+        
+        if self.configs.use_pretrain_lm:
+            print(f'Use pre-trained LM from dir {lm_dir} and id {lm_id}')
+        else:
+            print(f'No pre-trained LM used')
 
-        self.model.prior.apply(self._xavier_initialize)
-        optimizer = torch.optim.Adam(self.model.parameters(), lr = lr)
+        print(f'Total model parameters {self._count_parameters(self.model)-self._count_parameters(self.model.prior)} ')
+        print(f'Set high temperate as {high_temp} amd low temperature as {low_temp}')
+        print(f'Training with beta factor of {beta_factor} for VAE')
+        print(f'Training with alpha factor of {alpha_factor} for supervised loss')
+        print(f'{"-"*40}')
+
+        
+        self._set_experiment_seed(seed)
+        self.model.src_encoder.apply(self._xavier_initialize)
+        self.model.trg_decoder.apply(self._xavier_initialize)
+        self.model.trg_encoder.apply(self._xavier_initialize)
+        self.model.src_decoder.apply(self._xavier_initialize)
+        params = list(self.model.src_encoder.parameters()) + list(self.model.trg_decoder.parameters()) + list(self.model.trg_encoder.parameters()) + list(self.model.src_decoder.parameters())
+        optimizer = torch.optim.Adam(params, lr=lr)
         
         EXP_START = time.time()
         best_valid_loss = float('inf')
         for epoch in range(max_epoch):
-            train_loss = self._train_vae(self.train_data, optimizer, grad_clip, temperature[epoch], factor)
-            train_loss += self._train_seq2seq(self.train_data, optimizer, grad_clip)
-
-            valid_loss = self._evaluate_vae(self.valid_data, low_temp)
-            valid_loss += self._evaluate_seq2seq(self.valid_data)
+            train_loss = self._train_semi(self.train_data, optimizer, grad_clip, temperature[epoch], alpha_factor, beta_factor)
+            valid_loss = self._evaluate_semi(self.valid_data, temperature[epoch], alpha_factor, beta_factor)
             
             print(f'{"-"*20} Epoch {epoch + 1}/{max_epoch} training done {"-"*20}')
             
             if valid_loss < best_valid_loss:
                 best_valid_loss = valid_loss 
-                self._save_model(self.model, model_dir, vae_name)
+                self._save_model(self.model, model_dir, experiment_id)
                 print(f'Save model in epoch {epoch + 1}.')
         
-        print('Retrieve best model for testing')
-        self._load_model(self.model, model_dir, vae_name)
-        self.model.prior.to(self.device)
-        valid_loss = self._evaluate_vae(self.test_data, low_temp)
-        valid_loss += self._evaluate_seq2seq(self.test_data)
-        print(f'VAE experiment done in {time.time() - EXP_START}s.')
+        print(f'{"-"*20} Retrieve best model for testing {"-"*20}')
+        self._load_model(self.model, model_dir, experiment_id)
+        self.model.to(self.device)
+        valid_loss = self._evaluate_semi(self.test_data, low_temp, alpha_factor, beta_factor)
+        print(f'SEMI experiment done in {time.time() - EXP_START}s.')
+        print(f'{"-"*40}')
+
+        self.main_inference(self.test_data, self.vocab)
 
     def main_enhance(self):
         
@@ -472,11 +494,11 @@ class Trainer(object):
 
                 if self.configs.use_pseudo:
 
-                    p_trg = F.one_hot(src_[:, 1:], self.configs.vocab_size)
+                    p_trg = F.one_hot(src_[:, 1:], self.configs.vocab_size).double()
                     
                 else:
                     
-                    p_trg = F.one_hot(src[:, 1:], self.configs.vocab_size)
+                    p_trg = F.one_hot(src[:, 1:], self.configs.vocab_size).double()
 
             q_trg = trg_logit
             
@@ -527,26 +549,28 @@ class Trainer(object):
                 trg_, src[:,:-1], False)
 
             rec_loss = self.model._reconstruction_loss(src__, src[:, 1:], False)
-                
+            
             if self.configs.use_pretrain_lm:
                 
                 if self.configs.use_pseudo:
 
                     p_trg = self.model.decode_lm(self.model.prior, src_[:, :-1], True)
+                    p_trg = F.softmax(p_trg, dim=2)
                     
                 else:
                     
                     p_trg = self.model.decode_lm(self.model.prior, src[:, :-1], True)
+                    p_trg = F.softmax(p_trg, dim=2)
 
             else:
 
                 if self.configs.use_pseudo:
 
-                    p_trg = F.one_hot(src_[:, 1:], self.configs.vocab_size)
+                    p_trg = F.one_hot(src_[:, 1:], self.configs.vocab_size).double()
                     
                 else:
                     
-                    p_trg = F.one_hot(src[:, 1:], self.configs.vocab_size)
+                    p_trg = F.one_hot(src[:, 1:], self.configs.vocab_size).double()
 
             q_trg = trg_logit
             
@@ -629,6 +653,182 @@ class Trainer(object):
         elapsed = time.time() - start_time
         print(f'Epoch evaluateion time is: {elapsed}s.')
         return epoch_loss / len(dataloader)
+
+    def _train_semi(self, dataloader, optimizer, grad_clip, temperature=None, alpha=1, beta=1):
+        self.model.train()
+        epoch_total_loss, epoch_seq2seq_loss, epoch_vae_loss, epoch_rec_loss, epoch_kl_loss = 0, 0, 0, 0, 0
+        start_time = time.time()
+        
+        log_inter = len(dataloader) // 5
+        for idx, (src, trg, src_) in enumerate(tqdm(dataloader)):
+            optimizer.zero_grad()
+
+            if self.configs.use_pseudo:
+
+                # trg_ (B, S, V)
+                trg_, trg_logit = self.model.encode_sample_decode(self.model.src_encoder, self.model.trg_decoder, 
+                        src, src_, self.configs.latent_hard, self.configs.gumbel_max, temperature) 
+            
+            else:
+
+                trg_, trg_logit = self.model.encode_sample_decode(self.model.src_encoder, self.model.trg_decoder, 
+                        src, src, self.configs.latent_hard, self.configs.gumbel_max, temperature)
+            
+            # src__ (B, S-1, V)
+            src__ = self.model.encode_and_decode(self.model.trg_encoder, self.model.src_decoder,
+                trg_, src[:,:-1], False)
+
+            rec_loss = self.model._reconstruction_loss(src__, src[:, 1:], False)
+            
+            # calculate reconstruction loss between src and src__
+                
+            if self.configs.use_pretrain_lm:
+                
+                if self.configs.use_pseudo:
+
+                    p_trg = self.model.decode_lm(self.model.prior, src_[:, :-1], True)
+                    p_trg = F.softmax(p_trg, dim=2)
+                    
+                else:
+                    
+                    p_trg = self.model.decode_lm(self.model.prior, src[:, :-1], True)
+                    p_trg = F.softmax(p_trg, dim=2)
+
+            else:
+
+                if self.configs.use_pseudo:
+
+                    p_trg = F.one_hot(src_[:, 1:], self.configs.vocab_size).double()
+                    
+                else:
+                    
+                    p_trg = F.one_hot(src[:, 1:], self.configs.vocab_size).double()
+
+            q_trg = trg_logit
+            
+            kl_loss = self.model._KL_loss(q_trg, p_trg)
+
+            vae_loss = beta*torch.mean(rec_loss) + (1-beta) * torch.mean(kl_loss)
+
+            src_de = self.model.encode_and_decode(self.model.trg_encoder, self.model.src_decoder,
+                trg, src[:,:-1], True)
+            
+            trg_de = self.model.encode_and_decode(self.model.src_encoder, self.model.trg_decoder,
+                src, trg[:,:-1], True)
+
+            loss_src = self.model._reconstruction_loss(src_de, src[:, 1:], False)
+            loss_trg = self.model._reconstruction_loss(trg_de, trg[:, 1:], False)
+
+            seq2seq_loss = torch.mean(loss_src) + torch.mean(loss_trg)
+
+            loss = alpha*vae_loss + (1-alpha)*seq2seq_loss
+
+            loss.backward()
+
+            torch.nn.utils.clip_grad_norm_(self.model.src_encoder.parameters(), grad_clip)
+            torch.nn.utils.clip_grad_norm_(self.model.trg_decoder.parameters(), grad_clip)
+            torch.nn.utils.clip_grad_norm_(self.model.trg_encoder.parameters(), grad_clip)
+            torch.nn.utils.clip_grad_norm_(self.model.src_decoder.parameters(), grad_clip)
+
+            optimizer.step()
+
+            epoch_total_loss += loss.item()
+            epoch_vae_loss += vae_loss.item()
+            epoch_seq2seq_loss += seq2seq_loss.item()
+            epoch_rec_loss += torch.mean(rec_loss).item()
+            epoch_kl_loss += torch.mean(kl_loss).item()
+
+            if idx % log_inter == 0 and idx > 0:
+                print(f'{"-"*20} Batches: {idx}/{len(dataloader)} {"-"*20}')
+                print(f'For VAE | TOTAL LOSS: {epoch_vae_loss/(idx+1)} | PPL: {math.exp(epoch_rec_loss/(idx+1))} | REC Loss: {epoch_rec_loss/(idx+1)} | KL Loss: {epoch_kl_loss/(idx+1)} |')
+                print(f'| FOR SEQ2SEQ | TOTAL LOSS: {epoch_seq2seq_loss/(idx+1)/2} | PPL: {math.exp(epoch_rec_loss/(idx+1)/2)} |')
+                print(f'| IN GENERAL | TOTAL LOSS: {epoch_total_loss/(idx+1)} |')
+        elapsed = time.time() - start_time
+        print(f'Epoch training time is: {elapsed}s.')
+        return epoch_total_loss / len(dataloader)
+
+    def _evaluate_semi(self, dataloader, temperature=None, alpha=1, beta=1):
+        self.model.eval()
+        epoch_total_loss, epoch_seq2seq_loss, epoch_vae_loss, epoch_rec_loss, epoch_kl_loss = 0, 0, 0, 0, 0
+        start_time = time.time()
+        
+        log_inter = len(dataloader) // 5
+        for idx, (src, trg, src_) in enumerate(tqdm(dataloader)):
+
+            if self.configs.use_pseudo:
+
+                # trg_ (B, S, V)
+                trg_, trg_logit = self.model.encode_sample_decode(self.model.src_encoder, self.model.trg_decoder, 
+                        src, src_, self.configs.latent_hard, self.configs.gumbel_max, temperature) 
+            
+            else:
+
+                trg_, trg_logit = self.model.encode_sample_decode(self.model.src_encoder, self.model.trg_decoder, 
+                        src, src, self.configs.latent_hard, self.configs.gumbel_max, temperature)
+            
+            # src__ (B, S-1, V)
+            src__ = self.model.encode_and_decode(self.model.trg_encoder, self.model.src_decoder,
+                trg_, src[:,:-1], False)
+
+            rec_loss = self.model._reconstruction_loss(src__, src[:, 1:], False)
+            
+            # calculate reconstruction loss between src and src__
+                
+            if self.configs.use_pretrain_lm:
+                
+                if self.configs.use_pseudo:
+
+                    p_trg = self.model.decode_lm(self.model.prior, src_[:, :-1], True)
+                    p_trg = F.softmax(p_trg, dim=2)
+                    
+                else:
+                    
+                    p_trg = self.model.decode_lm(self.model.prior, src[:, :-1], True)
+                    p_trg = F.softmax(p_trg, dim=2)
+
+            else:
+
+                if self.configs.use_pseudo:
+
+                    p_trg = F.one_hot(src_[:, 1:], self.configs.vocab_size).double()
+                    
+                else:
+                    
+                    p_trg = F.one_hot(src[:, 1:], self.configs.vocab_size).double()
+
+            q_trg = trg_logit
+            
+            kl_loss = self.model._KL_loss(q_trg, p_trg)
+
+            vae_loss = beta*torch.mean(rec_loss) + (1-beta) * torch.mean(kl_loss)
+
+            src_de = self.model.encode_and_decode(self.model.trg_encoder, self.model.src_decoder,
+                trg, src[:,:-1], True)
+            
+            trg_de = self.model.encode_and_decode(self.model.src_encoder, self.model.trg_decoder,
+                src, trg[:,:-1], True)
+
+            loss_src = self.model._reconstruction_loss(src_de, src[:, 1:], False)
+            loss_trg = self.model._reconstruction_loss(trg_de, trg[:, 1:], False)
+
+            seq2seq_loss = torch.mean(loss_src) + torch.mean(loss_trg)
+
+            loss = alpha*vae_loss + (1-alpha)*seq2seq_loss
+
+            epoch_total_loss += loss.item()
+            epoch_vae_loss += vae_loss.item()
+            epoch_seq2seq_loss += seq2seq_loss.item()
+            epoch_rec_loss += torch.mean(rec_loss).item()
+            epoch_kl_loss += torch.mean(kl_loss).item()
+
+        print(f'{"-"*20} Evaluation Result {"-"*20}')
+        print(f'For VAE | TOTAL LOSS: {epoch_vae_loss/(idx+1)} | PPL: {math.exp(epoch_rec_loss/(idx+1))} | REC Loss: {epoch_rec_loss/(idx+1)} | KL Loss: {epoch_kl_loss/(idx+1)} |')
+        print(f'| FOR SEQ2SEQ | TOTAL LOSS: {epoch_seq2seq_loss/(idx+1)/2} | PPL: {math.exp(epoch_seq2seq_loss/(idx+1)/2)} |')
+        print(f'| IN GENERAL | TOTAL LOSS: {epoch_total_loss/(idx+1)} |')
+        
+        elapsed = time.time() - start_time
+        print(f'Epoch training time is: {elapsed}s.')
+        return epoch_total_loss / len(dataloader)
 
     def _xavier_initialize(self, model):
         if hasattr(model, 'weight') and model.weight.dim() > 1:
