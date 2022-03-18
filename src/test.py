@@ -16,7 +16,7 @@ def main():
     parser.add_argument(
         '-mv', '--max_vocab', type=int, default=None)
     parser.add_argument(
-        '-utrs', '--un_train_size', type=int, default=10000)
+        '-utrs', '--un_train_size', type=int, default=40000)
     parser.add_argument(
         '-trs', '--train_size', type=int, default=10000)
     parser.add_argument(
@@ -30,10 +30,10 @@ def main():
         '-hl', '--hard_loss', type=bool, default=False)
     
     parser.add_argument(
-        '-gum', '--gumbel_max', type=bool, default=False)
+        '-gum', '--gumbel_max', type=bool, default=True)
     
     parser.add_argument(
-        '-plm', '--use_pretrain_lm', type=bool, default=True)
+        '-plm', '--use_pretrain_lm', type=bool, default=False)
 
     parser.add_argument(
         '-up', '--use_pseudo', type=bool, default=False)
@@ -42,14 +42,14 @@ def main():
     parser.add_argument(
         '-lmdir', '--lm_dir', type=str, default='../model/lm/')
     parser.add_argument(
-        '-lmme', '--lm_max_epoch', type=int, default=5)
+        '-lmme', '--lm_max_epoch', type=int, default=10)
     parser.add_argument(
         '-lmlr', '--lm_lr', type=int, default=1e-4)
 
     parser.add_argument(
         '-vaedir', '--vae_dir', type=str, default='../model/vae/')
     parser.add_argument(
-        '-vaeme', '--vae_max_epoch', type=int, default=5)
+        '-vaeme', '--vae_max_epoch', type=int, default=10)
     parser.add_argument(
         '-vaelr', '--vae_lr', type=int, default=1e-4)
 

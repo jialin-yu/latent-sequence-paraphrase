@@ -132,7 +132,7 @@ class Transformer(nn.Module):
         
         src_pm, _ = self._get_padding_mask(src, src)
         enc_src = encoder.encode(src, None, src_pm, True)
-        dec_temp= F.one_hot(src, self.vocab_size)[:, 0].unsqueeze(1).double() # B, 1, V
+        dec_temp= F.one_hot(src, self.vocab_size)[:, 0].unsqueeze(1).double().detach() # B, 1, V
 
         for i in range(T-1):
 
@@ -146,20 +146,20 @@ class Transformer(nn.Module):
                 
                 if gumbel_max:
                     trg_new = gumbel_softmax(dec_out, temperature)[:, -1].unsqueeze(1)
-                    dec_temp = torch.cat((dec_temp, trg_new), dim=1)
+                    dec_temp = torch.cat((dec_temp, trg_new), dim=1).detach()
                 else:
                     trg_new = straight_through_softmax(dec_out)[:, -1].unsqueeze(1) 
-                    dec_temp = torch.cat((dec_temp, trg_new), dim=1)
+                    dec_temp = torch.cat((dec_temp, trg_new), dim=1).detach()
             else:
 
                 dec_out = decoder.decode(dec_temp, enc_src, trg_m, trg_src_m, trg_pm, src_pm, False)
                 
                 if gumbel_max:
                     trg_new = gumbel_softmax_sample(dec_out, temperature)[:, -1].unsqueeze(1) 
-                    dec_temp = torch.cat((dec_temp, trg_new), dim=1)
+                    dec_temp = torch.cat((dec_temp, trg_new), dim=1).detach()
                 else:
                     trg_new = F.softmax(dec_out, dim=-1)[:, -1].unsqueeze(1)
-                    dec_temp = torch.cat((dec_temp, trg_new), dim=1)
+                    dec_temp = torch.cat((dec_temp, trg_new), dim=1).detach()
         
         # dec_temp should have size (B, T, V)
         # print(dec_temp.size()[:-1])

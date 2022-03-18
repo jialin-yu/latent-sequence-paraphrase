@@ -287,7 +287,7 @@ class Trainer(object):
         best_valid_loss = float('inf')
         for epoch in range(max_epoch):
             train_loss = self._train_semi(self.train_data, optimizer, grad_clip, temperature[epoch], alpha_factor, beta_factor)
-            valid_loss = self._evaluate_semi(self.valid_data, temperature[epoch], alpha_factor, beta_factor)
+            valid_loss = self._evaluate_semi(self.valid_data, low_temp, alpha_factor, beta_factor)
             
             print(f'{"-"*20} Epoch {epoch + 1}/{max_epoch} training done {"-"*20}')
             
@@ -370,6 +370,7 @@ class Trainer(object):
         print('Calculate bound for test data')
         calculate_bound(test_split, True, True)
 
+        train_valid_idx = shuffle(train_valid_idx, random_state=1234)
         un_train_idx = train_valid_idx[:un_train_size]
         un_train_idx = shuffle(un_train_idx, random_state=1234)
         train_idx = train_valid_idx[:train_size]
@@ -379,7 +380,6 @@ class Trainer(object):
         valid_idx = train_valid_idx[-valid_size:]
 
         un_dl = DataLoader(un_train_idx, batch_size=self.configs.batch_size, shuffle=True, collate_fn=self._batchify)
-        train_dl = DataLoader(train_idx, batch_size=self.configs.batch_size, shuffle=True, collate_fn=self._batchify)
         train_dl = DataLoader(train_idx, batch_size=self.configs.batch_size, shuffle=True, collate_fn=self._batchify)
         valid_dl = DataLoader(valid_idx, batch_size=self.configs.batch_size, shuffle=False, collate_fn=self._batchify)
         test_dl = DataLoader(test_idx, batch_size=self.configs.batch_size, shuffle=False, collate_fn=self._batchify)
@@ -741,7 +741,7 @@ class Trainer(object):
             if idx % log_inter == 0 and idx > 0:
                 print(f'{"-"*20} Batches: {idx}/{len(dataloader)} {"-"*20}')
                 print(f'For VAE | TOTAL LOSS: {epoch_vae_loss/(idx+1)} | PPL: {math.exp(epoch_rec_loss/(idx+1))} | REC Loss: {epoch_rec_loss/(idx+1)} | KL Loss: {epoch_kl_loss/(idx+1)} |')
-                print(f'| FOR SEQ2SEQ | TOTAL LOSS: {epoch_seq2seq_loss/(idx+1)/2} | PPL: {math.exp(epoch_rec_loss/(idx+1)/2)} |')
+                print(f'| FOR SEQ2SEQ | TOTAL LOSS: {epoch_seq2seq_loss/(idx+1)/2} | PPL: {math.exp(epoch_seq2seq_loss/(idx+1)/2)} |')
                 print(f'| IN GENERAL | TOTAL LOSS: {epoch_total_loss/(idx+1)} |')
         elapsed = time.time() - start_time
         print(f'Epoch training time is: {elapsed}s.')
