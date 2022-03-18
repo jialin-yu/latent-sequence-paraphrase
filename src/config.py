@@ -17,14 +17,18 @@ class Configs(object):
         self.mscoco_fp_test = '../.data/annotations/captions_val2014.json'
 
         self.quora_max_len = 25
-        self.mscoco_max_len = 20
-
         self.quora_min_freq = 5
+        self.quora_valid = 3000
+        self.quora_test = 20000
+
+        self.mscoco_max_len = 25
         self.mscoco_min_freq = 5
+        self.mscoco_valid = 2000
+        self.mscoco_test = 30000
 
         self.max_len = 150
 
-        self.batch_size = 16
+        self.batch_size = 32
         self.vocab_size = None
 
         self.inf = float('inf')

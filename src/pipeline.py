@@ -1,6 +1,6 @@
-from datasets import temp_seed
 import spacy
 import random
+from sklearn.utils import shuffle
 
 spacy_pipeline = spacy.load('en_core_web_sm')
 
@@ -18,10 +18,8 @@ def token_to_index(token, vocab_object):
 def index_to_token(index, vocab_object):
     return [vocab_object.get_itos()[ind] for ind in index]
 
-def get_pseudo(string):
-    tmp_str_token = string
-    random.Random(1234).shuffle(tokenizer(tmp_str_token))
-    return tmp_str_token
+def pseudo_tokenizer(string):
+    return shuffle(tokenizer(string), random_state=1234)
 
 def remove_bos_eos(idx_list, bos_id, eos_id):
     clear_idx = []

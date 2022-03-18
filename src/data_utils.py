@@ -13,7 +13,7 @@ import json
 import random
 from datasets import load_metric
 import numpy as np
-from pipeline import tokenizer, token_to_index, stringify, get_pseudo
+from pipeline import tokenizer, token_to_index, stringify, pseudo_tokenizer
 from tqdm import tqdm
 
 from torchtext.vocab import vocab
@@ -38,7 +38,7 @@ def process_quora(file_path_read):
             continue
         q1, q2, is_duplicate = l.split('\t')[3:]         
         if int(is_duplicate) == 1:
-            sentence_pairs.append((tokenizer(q1), tokenizer(q2), get_pseudo(q1)))
+            sentence_pairs.append((tokenizer(q1), tokenizer(q2), pseudo_tokenizer(q1)))
 
     print(f'Read {len(sentence_pairs)} pairs from original {len(lines)} pairs.')
     return sentence_pairs  
@@ -65,8 +65,8 @@ def process_mscoco(file_path_read):
         if len(l) != 5: # ignore error format
             continue
         q1, q2, q3, q4, q5 = l
-        sentence_pairs.append((tokenizer(q1), tokenizer(q2), get_pseudo(q1)))
-        sentence_pairs.append((tokenizer(q3), tokenizer(q4), get_pseudo(q3)))    
+        sentence_pairs.append((tokenizer(q1), tokenizer(q2), pseudo_tokenizer(q1)))
+        sentence_pairs.append((tokenizer(q3), tokenizer(q4), pseudo_tokenizer(q3)))    
 
     print(f'Read {len(sentence_pairs)} pairs from original {len(sentence_sets)} sets ({2*len(sentence_sets)} pairs).')
     return sentence_pairs

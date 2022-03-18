@@ -28,8 +28,8 @@ class Trainer(object):
             un_data, train_data, valid_data, test_data, vocab = self._build_quora_data(self.configs.max_vocab,
                 self.configs.un_train_size, self.configs.train_size, self.configs.valid_size, self.configs.test_size)
         elif self.configs.data == 'mscoco':
-            train_data, valid_data, test_data, vocab = self._build_mscoco_data(self.configs.max_vocab, 
-                                        self.configs.train_size, self.configs.valid_size, self.configs.test_size)
+            un_data, train_data, valid_data, test_data, vocab = self._build_mscoco_data(self.configs.max_vocab,
+                self.configs.un_train_size, self.configs.train_size, self.configs.valid_size, self.configs.test_size)
         else:
             print(f'Dataset: {configs.data} not defined.')
             return
@@ -359,10 +359,11 @@ class Trainer(object):
         len_diff = un_train_size - train_size
         
         sentence_pairs = process_quora(self.configs.quora_fp)
+        sentence_pairs = shuffle(sentence_pairs, random_state=1234)
         train_valid_split, test_split = sentence_pairs[:-test_size], sentence_pairs[-test_size:]
         print(f'Calculate origional stats.')
         calculate_stats(train_valid_split)
-        VOCAB_ = create_vocab(train_valid_split, self.configs.quora_min_freq, max_vocab)
+        VOCAB_ = create_vocab(sentence_pairs, self.configs.quora_min_freq, max_vocab)
         VOCAB = append_special_tokens(VOCAB_, self.configs.special_token, self.configs.unk_id)
         train_valid_idx, test_idx = normalise(train_valid_split, test_split, VOCAB, self.configs.quora_max_len)
         print(f'Calculate normalised stats.')
@@ -386,9 +387,41 @@ class Trainer(object):
 
         return un_dl, train_dl, valid_dl, test_dl, VOCAB
 
-    def _build_mscoco_data(self, source_file_path_train, source_file_path_test, max_len, min_freq, max_vocab):
-        sentence_pairs_train_valid = process_mscoco(source_file_path_train)
-        sentence_pairs_test = process_mscoco(source_file_path_test)
+    def _build_mscoco_data(self, max_vocab, un_train_size, train_size, valid_size, test_size):
+        
+        assert un_train_size >= train_size
+        len_diff = un_train_size - train_size
+        
+        train_valid_split = process_mscoco(self.configs.mscoco_fp_train)
+        test_split = process_mscoco(self.configs.mscoco_fp_test)
+        test_split = shuffle(test_split, random_state=1234)
+        test_split = test_split[-test_size:]
+        
+        print(f'Calculate origional stats.')
+        calculate_stats(train_valid_split)
+        VOCAB_ = create_vocab(train_valid_split, self.configs.mscoco_min_freq, max_vocab)
+        VOCAB = append_special_tokens(VOCAB_, self.configs.special_token, self.configs.unk_id)
+        train_valid_idx, test_idx = normalise(train_valid_split, test_split, VOCAB, self.configs.mscoco_max_len)
+        print(f'Calculate normalised stats.')
+        calculate_stats(train_valid_idx)
+        print('Calculate bound for test data')
+        calculate_bound(test_split, True, True)
+
+        train_valid_idx = shuffle(train_valid_idx, random_state=1234)
+        un_train_idx = train_valid_idx[:un_train_size]
+        un_train_idx = shuffle(un_train_idx, random_state=1234)
+        train_idx = train_valid_idx[:train_size]
+        train_idx = train_idx + resample(train_idx, n_samples=len_diff, random_state=1234)
+        train_idx = shuffle(train_idx, random_state=1234)
+
+        valid_idx = train_valid_idx[-valid_size:]
+
+        un_dl = DataLoader(un_train_idx, batch_size=self.configs.batch_size, shuffle=True, collate_fn=self._batchify)
+        train_dl = DataLoader(train_idx, batch_size=self.configs.batch_size, shuffle=True, collate_fn=self._batchify)
+        valid_dl = DataLoader(valid_idx, batch_size=self.configs.batch_size, shuffle=False, collate_fn=self._batchify)
+        test_dl = DataLoader(test_idx, batch_size=self.configs.batch_size, shuffle=False, collate_fn=self._batchify)
+
+        return un_dl, train_dl, valid_dl, test_dl, VOCAB
     
 
     def _train_lm(self, dataloader, optimizer, grad_clip):

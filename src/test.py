@@ -12,17 +12,17 @@ def main():
     
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        '-d', '--data', type=str, default='quora')
+        '-d', '--data', type=str, default='mscoco')
     parser.add_argument(
         '-mv', '--max_vocab', type=int, default=None)
     parser.add_argument(
-        '-utrs', '--un_train_size', type=int, default=40000)
+        '-utrs', '--un_train_size', type=int, default=100000)
     parser.add_argument(
-        '-trs', '--train_size', type=int, default=10000)
+        '-trs', '--train_size', type=int, default=100000)
     parser.add_argument(
-        '-vs', '--valid_size', type=int, default=1000)
+        '-vs', '--valid_size', type=int, default=20000)
     parser.add_argument(
-        '-ts', '--test_size', type=int, default=3000)
+        '-ts', '--test_size', type=int, default=80000)
     
     parser.add_argument(
         '-lh', '--latent_hard', type=bool, default=False)
@@ -88,8 +88,8 @@ def main():
     interface = Trainer(configs)
     # interface.main_lm()
     # interface.main_vae()
-    # interface.main_seq2seq()
-    interface.main_semi_supervised()
+    interface.main_seq2seq()
+    # interface.main_semi_supervised()
 
 
 if __name__ == "__main__":
