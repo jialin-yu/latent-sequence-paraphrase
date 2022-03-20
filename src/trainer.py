@@ -13,8 +13,9 @@ import os
 from transformer import Transformer
 from sample import straight_through_softmax
 
-from pipeline import index_to_token, remove_bos_eos, stringify
+from pipeline import index_to_token, remove_bos_eos, stringify, bert_tokenizer
 from sklearn.utils import shuffle, resample
+
 
 class Trainer(object):
 
@@ -31,6 +32,8 @@ class Trainer(object):
             un_data, train_data, valid_data, test_data, vocab = self._build_mscoco_data(self.configs.max_vocab,
                 self.configs.un_train_size, self.configs.train_size, self.configs.valid_size, self.configs.test_size)
         else:
+            un_data, train_data, valid_data, test_data = self._build_mscoco_bert(self.configs.un_train_size, 
+                self.configs.train_size, self.configs.valid_size, self.configs.test_size)
             print(f'Dataset: {configs.data} not defined.')
             return
         
@@ -422,6 +425,38 @@ class Trainer(object):
         test_dl = DataLoader(test_idx, batch_size=self.configs.batch_size, shuffle=False, collate_fn=self._batchify)
 
         return un_dl, train_dl, valid_dl, test_dl, VOCAB
+
+    def _build_mscoco_bert(self, un_train_size, train_size, valid_size, test_size):
+        
+        assert un_train_size >= train_size
+        len_diff = un_train_size - train_size
+        
+        train_valid_split = process_mscoco(self.configs.mscoco_fp_train, use_bert=True)
+        test_split = process_mscoco(self.configs.mscoco_fp_test, use_bert=True)
+        test_split = shuffle(test_split, random_state=1234)
+        # test_split = test_split[-test_size:]
+        
+        train_valid_idx, test_idx = bert_normalise(train_valid_split, test_split, bert_tokenizer)
+        print(f'Calculate normalised stats.')
+        calculate_stats(train_valid_idx)
+        print('Calculate bound for test data')
+        calculate_bound(test_split, True, True)
+
+        train_valid_idx = shuffle(train_valid_idx, random_state=1234)
+        un_train_idx = train_valid_idx[:un_train_size]
+        un_train_idx = shuffle(un_train_idx, random_state=1234)
+        train_idx = train_valid_idx[:train_size]
+        train_idx = train_idx + resample(train_idx, n_samples=len_diff, random_state=1234)
+        train_idx = shuffle(train_idx, random_state=1234)
+
+        valid_idx = train_valid_idx[-valid_size:]
+
+        un_dl = DataLoader(un_train_idx, batch_size=self.configs.batch_size, shuffle=True, collate_fn=self._batchify)
+        train_dl = DataLoader(train_idx, batch_size=self.configs.batch_size, shuffle=True, collate_fn=self._batchify)
+        valid_dl = DataLoader(valid_idx, batch_size=self.configs.batch_size, shuffle=False, collate_fn=self._batchify)
+        test_dl = DataLoader(test_idx, batch_size=self.configs.batch_size, shuffle=False, collate_fn=self._batchify)
+
+        return un_dl, train_dl, valid_dl, test_dl
     
 
     def _train_lm(self, dataloader, optimizer, grad_clip):

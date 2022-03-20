@@ -1,8 +1,27 @@
+from tokenize import Token
 import spacy
 import random
 from sklearn.utils import shuffle
+from transformers import BertTokenizer
 
 spacy_pipeline = spacy.load('en_core_web_sm')
+bert_tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+bert_tokenizer.bos_token = bert_tokenizer.cls_token
+bert_tokenizer.eos_token = bert_tokenizer.sep_token
+
+
+
+def bert_tokenize(string):
+    return bert_tokenizer.tokenize(string)
+
+def bert_decode(token):
+    return bert_tokenizer.decode(token)
+
+def pseudo_bert_tokenize(string):
+    return bert_tokenize(stringify(shuffle(tokenizer(string), random_state=1234)))
+
+def clear_bert(idx_list):
+    return remove_bos_eos(idx_list, tokenizer.bos_token_id, tokenizer.eos_token_id)
 
 
 def tokenizer(string):

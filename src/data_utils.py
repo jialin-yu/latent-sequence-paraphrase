@@ -13,7 +13,7 @@ import json
 import random
 from datasets import load_metric
 import numpy as np
-from pipeline import tokenizer, token_to_index, stringify, pseudo_tokenizer
+from pipeline import tokenizer, token_to_index, stringify, pseudo_tokenizer, bert_tokenize, pseudo_bert_tokenize
 from tqdm import tqdm
 
 from torchtext.vocab import vocab
@@ -26,7 +26,7 @@ from sklearn.utils import shuffle
 #################################################
 
 
-def process_quora(file_path_read):   
+def process_quora(file_path_read, use_bert=False):   
     print(f'Read quora data from path: {file_path_read}...')
     
     with open(file_path_read, 'r') as f:
@@ -43,7 +43,7 @@ def process_quora(file_path_read):
     print(f'Read {len(sentence_pairs)} pairs from original {len(lines)} pairs.')
     return sentence_pairs  
 
-def process_mscoco(file_path_read):   
+def process_mscoco(file_path_read, use_bert=False):   
     print(f'Read mscoco data from path: {file_path_read}...')
     
     with open(file_path_read, 'r') as f:
@@ -64,22 +64,27 @@ def process_mscoco(file_path_read):
     for l in tqdm(sentence_sets):
         if len(l) != 5: # ignore error format
             continue
-        q1, q2, q3, q4, q5 = l
-        sentence_pairs.append((tokenizer(q1), tokenizer(q2), pseudo_tokenizer(q1)))
-        sentence_pairs.append((tokenizer(q3), tokenizer(q4), pseudo_tokenizer(q3)))    
+        l = shuffle(l, random_state=1234)
+        q1, q2, _, _, _ = l
+        if use_bert:
+            sentence_pairs.append((bert_tokenize(q1), bert_tokenize(q2), pseudo_bert_tokenize(q1)))
+        else:
+            sentence_pairs.append((tokenizer(q1), tokenizer(q2), pseudo_tokenizer(q1)))    
 
-    print(f'Read {len(sentence_pairs)} pairs from original {len(sentence_sets)} sets ({2*len(sentence_sets)} pairs).')
+    print(f'Read {len(sentence_pairs)} pairs from original {len(sentence_sets)} sets.')
     return sentence_pairs
 
 #################################################
 ############## Calculate Statistics #############
 #################################################
 
-def calculate_stats(sentence_pair):
+def calculate_stats(sentence_sets):
+    
     tmp = []
-    for (q1, q2, _) in tqdm(sentence_pair):
-        tmp.append(len(q1))
-        tmp.append(len(q2))
+    for sets in tqdm(sentence_sets):  
+        tmp.append(len(sets[0]))
+        tmp.append(len(sets[1]))
+
     np_arr = np.array(tmp)
     print(f'Mean: {np.ceil(np.mean(np_arr))}; STD: {np.ceil(np.std(np_arr))}; Min: {np.ceil(np.min(np_arr))} and Max: {np.ceil(np.max(np_arr))}')
 
@@ -87,13 +92,14 @@ def calculate_stats(sentence_pair):
 ############## Build Vocabulary     #############
 #################################################
 
-def create_vocab(sentence_pair, min_freq=1, max_size=None):
+def create_vocab(sentence_sets, min_freq=1, max_size=None):
     MIN_FREQUENT = min_freq
     print(f'Creating vocab object ...')
+    
     counter = Counter()
-    for (q1, q2, _) in tqdm(sentence_pair):
-        counter.update(q1)
-        counter.update(q2)
+    for sets in tqdm(sentence_sets):       
+        counter.update(sets[0])
+        counter.update(sets[1])
     
     sorted_by_freq_tuples = sorted(counter.items(), key=lambda x: x[1], reverse=True)
     if max_size == None:
@@ -122,14 +128,30 @@ def append_special_tokens(vocab_object, sp_tokens, unk_id):
 def normalise(train_and_valid, test, vocab, cutoff):
     print(f'Normalising data...')
 
-    train_valid_temp = []
-    for q1, q2, q1_ in tqdm(train_and_valid):
-        train_valid_temp.append((token_to_index(q1[:cutoff], vocab), token_to_index(q2[:cutoff], vocab), token_to_index(q1_[:cutoff], vocab)))
-    
-    test_temp = []
-    for q1, q2, q1_ in tqdm(test):
-        test_temp.append((token_to_index(q1[:cutoff], vocab), token_to_index(q2[:cutoff], vocab), token_to_index(q1_[:cutoff], vocab)))
-    return train_valid_temp, test_temp
+    tr_v_temp = []
+    t_temp = []
+
+    for sets in tqdm(train_and_valid):
+        tr_v_temp.append((token_to_index(sets[0][:cutoff], vocab), token_to_index(sets[1][:cutoff], vocab), token_to_index(sets[2][:cutoff], vocab)))
+        
+    for sets in tqdm(test):
+        t_temp.append((token_to_index(sets[0], vocab), token_to_index(sets[1], vocab), token_to_index(sets[2], vocab)))
+        
+    return tr_v_temp, t_temp
+
+def bert_normalise(train_and_valid, test, bert_tokenize):
+    print(f'Normalising data...')
+
+    tr_v_temp = []
+    t_temp = []
+
+    for sets in tqdm(train_and_valid):
+        tr_v_temp.append((bert_tokenize.convert_tokens_to_ids(sets[0]), bert_tokenize.convert_tokens_to_ids(sets[1]), bert_tokenize.convert_tokens_to_ids(sets[2])))
+        
+    for sets in tqdm(test):
+        t_temp.append((bert_tokenize.convert_tokens_to_ids(sets[0]), bert_tokenize.convert_tokens_to_ids(sets[1])))
+        
+    return tr_v_temp, t_temp
 
 #################################################
 ################  Calculate Bound   #############
@@ -138,20 +160,19 @@ def normalise(train_and_valid, test, vocab, cutoff):
 bleu_metric = load_metric('bleu')
 rouge_metric = load_metric('rouge')
 
-def calculate_bound(tokenized_test_pairs, bleu=False, rouge=False, inference=False):
+def calculate_bound(tokenized_test_sets, bleu=False, rouge=False, inference=False):
 
-    shuffle_test_pairs = shuffle(tokenized_test_pairs, random_state=1234)
+    shuffle_test_sets = shuffle(tokenized_test_sets, random_state=1234)
 
     if(bleu):
 
         print(f'{"-"*20} Calculate BLEU score {"-"*20}')
-        pred = [s[0] for s in tokenized_test_pairs]
-        refer = [[s[1]] for s in tokenized_test_pairs]
+        pred = [s[0] for s in tokenized_test_sets]
+        refer = [[s[1]] for s in tokenized_test_sets]
 
         bleu = bleu_metric.compute(predictions=pred, references=refer)
 
-        pred = [s[0] for s in shuffle_test_pairs]
-        refer = [[s[1]] for s in tokenized_test_pairs]
+        pred = [s[0] for s in shuffle_test_sets]
 
         bleu_ = bleu_metric.compute(predictions=pred, references=refer)
         
@@ -166,14 +187,12 @@ def calculate_bound(tokenized_test_pairs, bleu=False, rouge=False, inference=Fal
     if (rouge):
 
         print(f'{"-"*20} Calculate ROUGE score {"-"*20}')
-
-        pred = [stringify(s[0]) for s in tokenized_test_pairs]
-        refer = [stringify(s[1]) for s in tokenized_test_pairs]
+        pred = [stringify(s[0]) for s in tokenized_test_sets]
+        refer = [stringify(s[1]) for s in tokenized_test_sets]
 
         rouge = rouge_metric.compute(predictions=pred, references=refer)
 
-        pred = [stringify(s[0]) for s in shuffle_test_pairs]
-        refer = [stringify(s[1]) for s in tokenized_test_pairs]
+        pred = [stringify(s[0]) for s in shuffle_test_sets]
         
         rouge_ = rouge_metric.compute(predictions=pred, references=refer)
         

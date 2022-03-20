@@ -12,17 +12,17 @@ def main():
     
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        '-d', '--data', type=str, default='mscoco')
+        '-d', '--data', type=str, default='mscocoo')
     parser.add_argument(
         '-mv', '--max_vocab', type=int, default=None)
     parser.add_argument(
-        '-utrs', '--un_train_size', type=int, default=100000)
+        '-utrs', '--un_train_size', type=int, default=20000)
     parser.add_argument(
-        '-trs', '--train_size', type=int, default=100000)
+        '-trs', '--train_size', type=int, default=1000)
     parser.add_argument(
-        '-vs', '--valid_size', type=int, default=20000)
+        '-vs', '--valid_size', type=int, default=2000)
     parser.add_argument(
-        '-ts', '--test_size', type=int, default=80000)
+        '-ts', '--test_size', type=int, default=800)
     
     parser.add_argument(
         '-lh', '--latent_hard', type=bool, default=False)
