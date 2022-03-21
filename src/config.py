@@ -18,15 +18,19 @@ class Configs(object):
 
         self.quora_max_len = 25
         self.quora_min_freq = 5
+        self.quora_train_max = 10000
         self.quora_valid = 3000
-        self.quora_test = 20000
+        self.quora_test = 30000
 
         self.mscoco_max_len = 25
         self.mscoco_min_freq = 5
-        self.mscoco_valid = 2000
-        self.mscoco_test = 30000
+        self.mscoco_train_max = 75000
+        self.mscoco_valid = 5000
+        self.mscoco_test = 40000
 
-        self.max_len = 150
+        self.use_spacy = False
+
+        self.max_len = 50
 
         self.batch_size = 32
         self.vocab_size = None

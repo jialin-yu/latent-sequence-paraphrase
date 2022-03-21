@@ -13,7 +13,7 @@ import json
 import random
 from datasets import load_metric
 import numpy as np
-from pipeline import tokenizer, token_to_index, stringify, pseudo_tokenizer, bert_tokenize, pseudo_bert_tokenize
+from pipeline import tokenizer, token_to_index, stringify, pseudo_tokenizer
 from tqdm import tqdm
 
 from torchtext.vocab import vocab
@@ -26,7 +26,7 @@ from sklearn.utils import shuffle
 #################################################
 
 
-def process_quora(file_path_read, use_bert=False):   
+def process_quora(file_path_read, use_spacy=True):   
     print(f'Read quora data from path: {file_path_read}...')
     
     with open(file_path_read, 'r') as f:
@@ -38,12 +38,12 @@ def process_quora(file_path_read, use_bert=False):
             continue
         q1, q2, is_duplicate = l.split('\t')[3:]         
         if int(is_duplicate) == 1:
-            sentence_pairs.append((tokenizer(q1), tokenizer(q2), pseudo_tokenizer(q1)))
+            sentence_pairs.append((tokenizer(q1, use_spacy), tokenizer(q2, use_spacy), pseudo_tokenizer(q1, use_spacy)))
 
     print(f'Read {len(sentence_pairs)} pairs from original {len(lines)} pairs.')
     return sentence_pairs  
 
-def process_mscoco(file_path_read, use_bert=False):   
+def process_mscoco(file_path_read, use_spacy=True):   
     print(f'Read mscoco data from path: {file_path_read}...')
     
     with open(file_path_read, 'r') as f:
@@ -65,11 +65,8 @@ def process_mscoco(file_path_read, use_bert=False):
         if len(l) != 5: # ignore error format
             continue
         l = shuffle(l, random_state=1234)
-        q1, q2, _, _, _ = l
-        if use_bert:
-            sentence_pairs.append((bert_tokenize(q1), bert_tokenize(q2), pseudo_bert_tokenize(q1)))
-        else:
-            sentence_pairs.append((tokenizer(q1), tokenizer(q2), pseudo_tokenizer(q1)))    
+        q1, q2, q3, q4, q5 = l
+        sentence_pairs.append((tokenizer(q1, use_spacy), tokenizer(q2, use_spacy),tokenizer(q3, use_spacy), tokenizer(q4, use_spacy),tokenizer(q5, use_spacy), pseudo_tokenizer(q1, use_spacy)))    
 
     print(f'Read {len(sentence_pairs)} pairs from original {len(sentence_sets)} sets.')
     return sentence_pairs
@@ -97,10 +94,10 @@ def create_vocab(sentence_sets, min_freq=1, max_size=None):
     print(f'Creating vocab object ...')
     
     counter = Counter()
-    for sets in tqdm(sentence_sets):       
+    for sets in tqdm(sentence_sets):           
         counter.update(sets[0])
         counter.update(sets[1])
-    
+
     sorted_by_freq_tuples = sorted(counter.items(), key=lambda x: x[1], reverse=True)
     if max_size == None:
         MAX_SIZE = len(sorted_by_freq_tuples)
@@ -131,26 +128,11 @@ def normalise(train_and_valid, test, vocab, cutoff):
     tr_v_temp = []
     t_temp = []
 
-    for sets in tqdm(train_and_valid):
-        tr_v_temp.append((token_to_index(sets[0][:cutoff], vocab), token_to_index(sets[1][:cutoff], vocab), token_to_index(sets[2][:cutoff], vocab)))
-        
-    for sets in tqdm(test):
-        t_temp.append((token_to_index(sets[0], vocab), token_to_index(sets[1], vocab), token_to_index(sets[2], vocab)))
-        
-    return tr_v_temp, t_temp
-
-def bert_normalise(train_and_valid, test, bert_tokenize):
-    print(f'Normalising data...')
-
-    tr_v_temp = []
-    t_temp = []
-
-    for sets in tqdm(train_and_valid):
-        tr_v_temp.append((bert_tokenize.convert_tokens_to_ids(sets[0]), bert_tokenize.convert_tokens_to_ids(sets[1]), bert_tokenize.convert_tokens_to_ids(sets[2])))
-        
-    for sets in tqdm(test):
-        t_temp.append((bert_tokenize.convert_tokens_to_ids(sets[0]), bert_tokenize.convert_tokens_to_ids(sets[1])))
-        
+    for sets in tqdm(train_and_valid): 
+        tr_v_temp.append((token_to_index(sets[0][:cutoff], vocab), token_to_index(sets[1][:cutoff], vocab), token_to_index(sets[-1][:cutoff], vocab)))
+    for sets in tqdm(test):  
+        t_temp.append((token_to_index(sets[0], vocab), token_to_index(sets[1], vocab), token_to_index(sets[-1], vocab)))
+    
     return tr_v_temp, t_temp
 
 #################################################
@@ -160,19 +142,24 @@ def bert_normalise(train_and_valid, test, bert_tokenize):
 bleu_metric = load_metric('bleu')
 rouge_metric = load_metric('rouge')
 
-def calculate_bound(tokenized_test_sets, bleu=False, rouge=False, inference=False):
+def calculate_bound(pred_set, reference_set, bleu=False, rouge=False, inference=False):
+    '''
+    pred_set and reference_set in tokenized format
+    pred_set = [[tokenized_1], [tokenized_2], ...]
+    reference_set = [([tokenized_1_1], [tokenized_1_2]), ([tokenized_2_1], [tokenized_2_2]), ...]
+    '''
 
-    shuffle_test_sets = shuffle(tokenized_test_sets, random_state=1234)
+    shuffle_pred_set= shuffle(pred_set, random_state=1234)
 
     if(bleu):
 
         print(f'{"-"*20} Calculate BLEU score {"-"*20}')
-        pred = [s[0] for s in tokenized_test_sets]
-        refer = [[s[1]] for s in tokenized_test_sets]
+        pred = pred_set
+        refer = [[s_ for s_ in s[1:-1]] for s in reference_set]
 
         bleu = bleu_metric.compute(predictions=pred, references=refer)
 
-        pred = [s[0] for s in shuffle_test_sets]
+        pred = shuffle_pred_set
 
         bleu_ = bleu_metric.compute(predictions=pred, references=refer)
         
@@ -187,12 +174,12 @@ def calculate_bound(tokenized_test_sets, bleu=False, rouge=False, inference=Fals
     if (rouge):
 
         print(f'{"-"*20} Calculate ROUGE score {"-"*20}')
-        pred = [stringify(s[0]) for s in tokenized_test_sets]
-        refer = [stringify(s[1]) for s in tokenized_test_sets]
+        pred = [stringify(s) for s in pred_set]
+        refer = [stringify(s[1]) for s in reference_set]
 
         rouge = rouge_metric.compute(predictions=pred, references=refer)
 
-        pred = [stringify(s[0]) for s in shuffle_test_sets]
+        pred = [stringify(s) for s in shuffle_pred_set]
         
         rouge_ = rouge_metric.compute(predictions=pred, references=refer)
         

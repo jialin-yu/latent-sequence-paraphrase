@@ -191,7 +191,7 @@ class Transformer(nn.Module):
         
         return dec_out
 
-    def inference(self, encoder, decoder, src, max_len=100):
+    def inference(self, encoder, decoder, src, max_len=150):
         '''
         INPUT:
         src (B, S) <bos> x <eos>

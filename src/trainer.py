@@ -13,7 +13,7 @@ import os
 from transformer import Transformer
 from sample import straight_through_softmax
 
-from pipeline import index_to_token, remove_bos_eos, stringify, bert_tokenizer
+from pipeline import index_to_token, remove_bos_eos, stringify
 from sklearn.utils import shuffle, resample
 
 
@@ -26,10 +26,10 @@ class Trainer(object):
         self.device = self.configs.device
         
         if self.configs.data == 'quora':
-            un_data, train_data, valid_data, test_data, vocab = self._build_quora_data(self.configs.max_vocab,
+            un_data, train_data, valid_data, test_data, vocab, test_split = self._build_quora_data(self.configs.max_vocab,
                 self.configs.un_train_size, self.configs.train_size, self.configs.valid_size, self.configs.test_size)
         elif self.configs.data == 'mscoco':
-            un_data, train_data, valid_data, test_data, vocab = self._build_mscoco_data(self.configs.max_vocab,
+            un_data, train_data, valid_data, test_data, vocab, test_split = self._build_mscoco_data(self.configs.max_vocab,
                 self.configs.un_train_size, self.configs.train_size, self.configs.valid_size, self.configs.test_size)
         else:
             un_data, train_data, valid_data, test_data = self._build_mscoco_bert(self.configs.un_train_size, 
@@ -53,24 +53,24 @@ class Trainer(object):
         print(f'Set model as {self._count_parameters(self.model)} parameters')
         print(f'{"-"*40}')
     
-    def main_inference(self, dataloader, vocab):
+    def main_inference(self, dataloader, vocab, test_split):
 
         print(f'{"-"*20} Perform inference {"-"*20}')
 
-        src_trg_idx = []
-        first_n = 20
+        pred_idx = []
+        first_n = 30
 
         for idx, (src, trg, src_) in enumerate(tqdm(dataloader)):
 
-            trg_batch = self.model.inference(self.model.src_encoder, self.model.trg_decoder, src, 30)
+            trg_batch = self.model.inference(self.model.src_encoder, self.model.trg_decoder, src, 50)
 
             for index, _ in enumerate(trg_batch):
-                src_trg_idx.append((trg_batch[index].cpu(), trg[index].cpu()))
+                pred_idx.append(trg_batch[index].cpu())
         
-        test_ = [(index_to_token(remove_bos_eos(i, self.configs.bos_id, self.configs.eos_id), vocab), index_to_token(remove_bos_eos(j, self.configs.bos_id, self.configs.eos_id), vocab)) for (i, j) in src_trg_idx]
+        test_ = [index_to_token(remove_bos_eos(pred, self.configs.bos_id, self.configs.eos_id), vocab) for pred in pred_idx]
         
         print(f'{"-"*20} Calculate Final Results {"-"*20}')
-        calculate_bound(test_, True, True, True)
+        calculate_bound(test_, test_split, True, True, True)
         print(f'{"-"*20} Print first {first_n} Results {"-"*20}')
         test__ = test_[:first_n]
         for pred, refer in test__:
@@ -344,10 +344,10 @@ class Trainer(object):
 
     def _batchify(self, batch):
         src_list, trg_list, src_list_ = [], [], []
-        for (src_idx, trg_idx, src_idx_) in batch:
-            src = torch.tensor([self.configs.bos_id] + src_idx + [self.configs.eos_id], dtype=torch.int64)
-            trg = torch.tensor([self.configs.bos_id] + trg_idx + [self.configs.eos_id], dtype=torch.int64)
-            src_ = torch.tensor([self.configs.bos_id] + src_idx_ + [self.configs.eos_id], dtype=torch.int64)
+        for sets in batch:
+            src = torch.tensor([self.configs.bos_id] + sets[0] + [self.configs.eos_id], dtype=torch.int64)
+            trg = torch.tensor([self.configs.bos_id] + sets[1] + [self.configs.eos_id], dtype=torch.int64)
+            src_ = torch.tensor([self.configs.bos_id] + sets[-1] + [self.configs.eos_id], dtype=torch.int64)
             src_list.append(src)
             trg_list.append(trg)
             src_list_.append(src_)
@@ -372,7 +372,8 @@ class Trainer(object):
         print(f'Calculate normalised stats.')
         calculate_stats(train_valid_idx)
         print('Calculate bound for test data')
-        calculate_bound(test_split, True, True)
+        test_pred = [s[0] for s in test_split]
+        calculate_bound(test_pred, test_split, True, True)
 
         train_valid_idx = shuffle(train_valid_idx, random_state=1234)
         un_train_idx = train_valid_idx[:un_train_size]
@@ -395,8 +396,8 @@ class Trainer(object):
         assert un_train_size >= train_size
         len_diff = un_train_size - train_size
         
-        train_valid_split = process_mscoco(self.configs.mscoco_fp_train)
-        test_split = process_mscoco(self.configs.mscoco_fp_test)
+        train_valid_split = process_mscoco(self.configs.mscoco_fp_train, self.configs.use_spacy)
+        test_split = process_mscoco(self.configs.mscoco_fp_test, self.configs.use_spacy)
         test_split = shuffle(test_split, random_state=1234)
         test_split = test_split[-test_size:]
         
@@ -408,7 +409,8 @@ class Trainer(object):
         print(f'Calculate normalised stats.')
         calculate_stats(train_valid_idx)
         print('Calculate bound for test data')
-        calculate_bound(test_split, True, True)
+        test_pred = [s[0] for s in test_split]
+        calculate_bound(test_pred, test_split, True, True)
 
         train_valid_idx = shuffle(train_valid_idx, random_state=1234)
         un_train_idx = train_valid_idx[:un_train_size]
@@ -424,40 +426,7 @@ class Trainer(object):
         valid_dl = DataLoader(valid_idx, batch_size=self.configs.batch_size, shuffle=False, collate_fn=self._batchify)
         test_dl = DataLoader(test_idx, batch_size=self.configs.batch_size, shuffle=False, collate_fn=self._batchify)
 
-        return un_dl, train_dl, valid_dl, test_dl, VOCAB
-
-    def _build_mscoco_bert(self, un_train_size, train_size, valid_size, test_size):
-        
-        assert un_train_size >= train_size
-        len_diff = un_train_size - train_size
-        
-        train_valid_split = process_mscoco(self.configs.mscoco_fp_train, use_bert=True)
-        test_split = process_mscoco(self.configs.mscoco_fp_test, use_bert=True)
-        test_split = shuffle(test_split, random_state=1234)
-        # test_split = test_split[-test_size:]
-        
-        train_valid_idx, test_idx = bert_normalise(train_valid_split, test_split, bert_tokenizer)
-        print(f'Calculate normalised stats.')
-        calculate_stats(train_valid_idx)
-        print('Calculate bound for test data')
-        calculate_bound(test_split, True, True)
-
-        train_valid_idx = shuffle(train_valid_idx, random_state=1234)
-        un_train_idx = train_valid_idx[:un_train_size]
-        un_train_idx = shuffle(un_train_idx, random_state=1234)
-        train_idx = train_valid_idx[:train_size]
-        train_idx = train_idx + resample(train_idx, n_samples=len_diff, random_state=1234)
-        train_idx = shuffle(train_idx, random_state=1234)
-
-        valid_idx = train_valid_idx[-valid_size:]
-
-        un_dl = DataLoader(un_train_idx, batch_size=self.configs.batch_size, shuffle=True, collate_fn=self._batchify)
-        train_dl = DataLoader(train_idx, batch_size=self.configs.batch_size, shuffle=True, collate_fn=self._batchify)
-        valid_dl = DataLoader(valid_idx, batch_size=self.configs.batch_size, shuffle=False, collate_fn=self._batchify)
-        test_dl = DataLoader(test_idx, batch_size=self.configs.batch_size, shuffle=False, collate_fn=self._batchify)
-
-        return un_dl, train_dl, valid_dl, test_dl
-    
+        return un_dl, train_dl, valid_dl, test_dl, VOCAB, test_split
 
     def _train_lm(self, dataloader, optimizer, grad_clip):
         self.model.prior.train()

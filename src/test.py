@@ -12,7 +12,7 @@ def main():
     
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        '-d', '--data', type=str, default='mscocoo')
+        '-d', '--data', type=str, default='mscoco')
     parser.add_argument(
         '-mv', '--max_vocab', type=int, default=None)
     parser.add_argument(
@@ -56,7 +56,7 @@ def main():
     parser.add_argument(
         '-seq2seqdir', '--seq2seq_dir', type=str, default='../model/seq2seq/')
     parser.add_argument(
-        '-seq2seqme', '--seq2seq_max_epoch', type=int, default=10)
+        '-seq2seqme', '--seq2seq_max_epoch', type=int, default=2)
     parser.add_argument(
         '-seq2seqlr', '--seq2seq_lr', type=int, default=1e-4)
 
