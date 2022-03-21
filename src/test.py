@@ -14,11 +14,9 @@ def main():
     parser.add_argument(
         '-d', '--data', type=str, default='mscoco')
     parser.add_argument(
-        '-mv', '--max_vocab', type=int, default=None)
+        '-utrs', '--un_train_size', type=int, default=70000)
     parser.add_argument(
-        '-utrs', '--un_train_size', type=int, default=20000)
-    parser.add_argument(
-        '-trs', '--train_size', type=int, default=1000)
+        '-trs', '--train_size', type=int, default=70000)
     
     parser.add_argument(
         '-lh', '--latent_hard', type=bool, default=False)
@@ -55,6 +53,8 @@ def main():
         '-seq2seqme', '--seq2seq_max_epoch', type=int, default=2)
     parser.add_argument(
         '-seq2seqlr', '--seq2seq_lr', type=int, default=1e-4)
+    parser.add_argument(
+        '-duo_train', '--duo', type=bool, default=True)
 
     parser.add_argument(
         '-semidir', '--semi_dir', type=str, default='../model/semi/')

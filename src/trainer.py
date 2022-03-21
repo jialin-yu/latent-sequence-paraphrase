@@ -446,12 +446,12 @@ class Trainer(object):
             if self.configs.use_pseudo:
 
                 output = self.model.decode_lm(self.model.prior, src_[:, :-1], True)         
-                loss = self.model._reconstruction_loss(output, src_[:, 1:], self.configs.hard_loss)
+                loss = self.model._reconstruction_loss(output, src_[:, 1:])
 
             else:
                     
                 output = self.model.decode_lm(self.model.prior, src[:, :-1], True)         
-                loss = self.model._reconstruction_loss(output, src[:, 1:], self.configs.hard_loss)
+                loss = self.model._reconstruction_loss(output, src[:, 1:])
 
             
             loss = torch.mean(loss)
@@ -476,12 +476,12 @@ class Trainer(object):
             if self.configs.use_pseudo:
 
                 output = self.model.decode_lm(self.model.prior, src_[:, :-1], True)         
-                loss = self.model._reconstruction_loss(output, src_[:, 1:], self.configs.hard_loss)
+                loss = self.model._reconstruction_loss(output, src_[:, 1:])
 
             else:
 
                 output = self.model.decode_lm(self.model.prior, src[:, :-1], True)         
-                loss = self.model._reconstruction_loss(output, src[:, 1:], self.configs.hard_loss)
+                loss = self.model._reconstruction_loss(output, src[:, 1:])
                 
             batch_loss = torch.mean(loss)
             epoch_loss += batch_loss.item()
@@ -515,7 +515,7 @@ class Trainer(object):
             src__ = self.model.encode_and_decode(self.model.trg_encoder, self.model.src_decoder,
                 trg_, src[:,:-1], False)
 
-            rec_loss = self.model._reconstruction_loss(src__, src[:, 1:], False)
+            rec_loss = self.model._reconstruction_loss(src__, src[:, 1:])
             
             # calculate reconstruction loss between src and src__
             
@@ -591,7 +591,7 @@ class Trainer(object):
             src__ = self.model.encode_and_decode(self.model.trg_encoder, self.model.src_decoder,
                 trg_, src[:,:-1], False)
 
-            rec_loss = self.model._reconstruction_loss(src__, src[:, 1:], False)
+            rec_loss = self.model._reconstruction_loss(src__, src[:, 1:])
             
             if self.configs.use_pretrain_lm:
                 
@@ -633,7 +633,7 @@ class Trainer(object):
         print(f'Epoch evaluation time is: {elapsed}s.')
         return epoch_total_loss / len(dataloader)
     
-    def _train_seq2seq(self, dataloader, optimizer, grad_clip):
+    def _train_seq2seq(self, dataloader, optimizer, grad_clip, duo=True):
         self.model.train()
         epoch_loss = 0
         start_time = time.time()
@@ -648,11 +648,15 @@ class Trainer(object):
             trg_ = self.model.encode_and_decode(self.model.src_encoder, self.model.trg_decoder,
                 src, trg[:,:-1], True)
 
-            loss_src = self.model._reconstruction_loss(src_, src[:, 1:], False)
-            loss_trg = self.model._reconstruction_loss(trg_, trg[:, 1:], False)
+            loss_src = self.model._reconstruction_loss(src_, src[:, 1:])
+            loss_trg = self.model._reconstruction_loss(trg_, trg[:, 1:])
 
-            loss = torch.mean(loss_src) + torch.mean(loss_trg)
-            loss.backward()
+            if duo:
+                loss = torch.mean(loss_src) + torch.mean(loss_trg)
+                loss.backward()
+            else:
+                loss = torch.mean(loss_trg)
+                loss.backward()
 
             torch.nn.utils.clip_grad_norm_(self.model.src_encoder.parameters(), grad_clip)
             torch.nn.utils.clip_grad_norm_(self.model.trg_decoder.parameters(), grad_clip)
@@ -664,13 +668,16 @@ class Trainer(object):
             epoch_loss += loss.item()
 
             if idx % log_inter == 0 and idx > 0:
-                print(f'| Batches: {idx}/{len(dataloader)} | PPL: {math.exp(epoch_loss/(idx+1)/2)} | LOSS: {epoch_loss/(idx+1)/2} |')
+                if duo:
+                    print(f'| Batches: {idx}/{len(dataloader)} | PPL: {math.exp(epoch_loss/(idx+1)/2)} | LOSS: {epoch_loss/(idx+1)/2} |')
+                else:
+                    print(f'| Batches: {idx}/{len(dataloader)} | PPL: {math.exp(epoch_loss/(idx+1))} | LOSS: {epoch_loss/(idx+1)} |')
         
         elapsed = time.time() - start_time
         print(f'Epoch training time is: {elapsed}s.')
         return epoch_loss / len(dataloader)
 
-    def _evaluate_seq2seq(self, dataloader):
+    def _evaluate_seq2seq(self, dataloader, duo=True):
         self.model.eval()
         epoch_loss = 0
         start_time = time.time()
@@ -683,15 +690,20 @@ class Trainer(object):
             trg_ = self.model.encode_and_decode(self.model.src_encoder, self.model.trg_decoder,
                 src, trg[:,:-1], True)
 
-            loss_src = self.model._reconstruction_loss(src_, src[:, 1:], False)
-            loss_trg = self.model._reconstruction_loss(trg_, trg[:, 1:], False)
+            loss_src = self.model._reconstruction_loss(src_, src[:, 1:])
+            loss_trg = self.model._reconstruction_loss(trg_, trg[:, 1:])
 
-            loss = torch.mean(loss_src) + torch.mean(loss_trg)
+            if duo:
+                loss = torch.mean(loss_src) + torch.mean(loss_trg)
+            else:
+                loss = torch.mean(loss_trg)
 
             epoch_loss += loss.item()
 
-            
-        print(f'| PPL: {math.exp(epoch_loss/(idx+1)/2)} | LOSS: {epoch_loss/(idx+1)/2} |')
+        if duo:
+            print(f'| PPL: {math.exp(epoch_loss/(idx+1)/2)} | LOSS: {epoch_loss/(idx+1)/2} |')
+        else:         
+            print(f'| PPL: {math.exp(epoch_loss/(idx+1))} | LOSS: {epoch_loss/(idx+1)} |')
         
         elapsed = time.time() - start_time
         print(f'Epoch evaluateion time is: {elapsed}s.')
@@ -721,7 +733,7 @@ class Trainer(object):
             src__ = self.model.encode_and_decode(self.model.trg_encoder, self.model.src_decoder,
                 trg_, src[:,:-1], False)
 
-            rec_loss = self.model._reconstruction_loss(src__, src[:, 1:], False)
+            rec_loss = self.model._reconstruction_loss(src__, src[:, 1:])
             
             # calculate reconstruction loss between src and src__
                 
@@ -759,8 +771,8 @@ class Trainer(object):
             trg_de = self.model.encode_and_decode(self.model.src_encoder, self.model.trg_decoder,
                 src, trg[:,:-1], True)
 
-            loss_src = self.model._reconstruction_loss(src_de, src[:, 1:], False)
-            loss_trg = self.model._reconstruction_loss(trg_de, trg[:, 1:], False)
+            loss_src = self.model._reconstruction_loss(src_de, src[:, 1:])
+            loss_trg = self.model._reconstruction_loss(trg_de, trg[:, 1:])
 
             seq2seq_loss = torch.mean(loss_src) + torch.mean(loss_trg)
 
@@ -813,7 +825,7 @@ class Trainer(object):
             src__ = self.model.encode_and_decode(self.model.trg_encoder, self.model.src_decoder,
                 trg_, src[:,:-1], False)
 
-            rec_loss = self.model._reconstruction_loss(src__, src[:, 1:], False)
+            rec_loss = self.model._reconstruction_loss(src__, src[:, 1:])
             
             # calculate reconstruction loss between src and src__
                 
@@ -851,8 +863,8 @@ class Trainer(object):
             trg_de = self.model.encode_and_decode(self.model.src_encoder, self.model.trg_decoder,
                 src, trg[:,:-1], True)
 
-            loss_src = self.model._reconstruction_loss(src_de, src[:, 1:], False)
-            loss_trg = self.model._reconstruction_loss(trg_de, trg[:, 1:], False)
+            loss_src = self.model._reconstruction_loss(src_de, src[:, 1:])
+            loss_trg = self.model._reconstruction_loss(trg_de, trg[:, 1:])
 
             seq2seq_loss = torch.mean(loss_src) + torch.mean(loss_trg)
 

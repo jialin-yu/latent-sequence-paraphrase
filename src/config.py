@@ -1,3 +1,4 @@
+import os
 
 class Configs(object):
     def __init__(self, **kwargs):
@@ -16,6 +17,8 @@ class Configs(object):
         self.mscoco_fp_train = '../.data/annotations/captions_train2014.json'
         self.mscoco_fp_test = '../.data/annotations/captions_val2014.json'
 
+        self.max_vocab = None
+        
         self.quora_max_len = 25
         self.quora_min_freq = 5
         self.quora_train_max = 10000
@@ -30,7 +33,7 @@ class Configs(object):
 
         self.use_spacy = False
 
-        self.max_len = 50
+        self.max_len = max(self.mscoco_max_len, self.quora_max_len) + 2
 
         self.batch_size = 32
         self.vocab_size = None
@@ -45,18 +48,24 @@ class Configs(object):
             setattr(self, name, value)
 
         if self.lm_dir:
-            lm_id = f'data_{self.data}_trainsize_{self.un_train_size}_lr_{self.lm_lr}_seed_{self.seed}_hardloss_{self.hard_loss}_pseudo_{self.use_pseudo}_epoch_{self.lm_max_epoch}'
+            lm_id = f'D_{self.data}_UNTR_{self.un_train_size}_L_{self.lm_lr}_S_{self.seed}_P_{self.use_pseudo}_EP_{self.lm_max_epoch}'
             self.lm_id = lm_id
 
         if self.vae_dir:
-            vae_id = f'data_{self.data}_seed_{self.seed}_hardloss_{self.hard_loss}_pseudo_{self.use_pseudo}_hardlatent_{self.latent_hard}_gumbelmax_{self.gumbel_max}_epoch_{self.vae_max_epoch}'
+            vae_id = f'D_{self.data}_UNTR_{self.un_train_size}_L_{self.vae_lr}_S_{self.seed}_P_{self.use_pseudo}_HL_{self.latent_hard}_GM_{self.gumbel_max}_EP_{self.vae_max_epoch}'
             self.vae_id = vae_id
 
         if self.seq2seq_dir:
-            seq2seq_id = f'data_{self.data}_trainsize_{self.train_size}_lr_{self.seq2seq_lr}_seed_{self.seed}_epoch_{self.seq2seq_max_epoch}'
+            seq2seq_id = f'D_{self.data}_TR_{self.train_size}_L_{self.seq2seq_lr}_S_{self.seed}_DUO_{self.duo}_EP_{self.seq2seq_max_epoch}'
             self.seq2seq_id = seq2seq_id
 
         if self.semi_dir:
-            semi_id = f'data_{self.data}_untrainsize_{self.un_train_size}_trainsize_{self.train_size}_lr_{self.seq2seq_lr}_seed_{self.seed}_hardloss_{self.hard_loss}_epoch_{self.seq2seq_max_epoch}'
+            semi_id = f'D_{self.data}_UNTR_{self.un_train_size}_TR_{self.train_size}_L_{self.seq2seq_lr}_S_{self.seed}_P_{self.use_pseudo}_HL_{self.latent_hard}_GM_{self.gumbel_max}_EP_{self.semi_max_epoch}'
             self.semi_id = semi_id
+        
+        for dir in [self.lm_dir, self.vae_dir, self.seq2seq_dir, self.semi_dir]:
+            if not os.path.exists(dir):
+                os.makedirs(dir)
+        
+        
 

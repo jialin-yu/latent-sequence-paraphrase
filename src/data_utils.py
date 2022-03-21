@@ -94,9 +94,16 @@ def create_vocab(sentence_sets, min_freq=1, max_size=None):
     print(f'Creating vocab object ...')
     
     counter = Counter()
-    for sets in tqdm(sentence_sets):           
-        counter.update(sets[0])
-        counter.update(sets[1])
+    for sets in tqdm(sentence_sets):
+        if len(sets) == 3:           
+            counter.update(sets[0])
+            counter.update(sets[1])
+        else:
+            counter.update(sets[0])
+            counter.update(sets[1])
+            counter.update(sets[2])
+            counter.update(sets[3])
+            counter.update(sets[4])
 
     sorted_by_freq_tuples = sorted(counter.items(), key=lambda x: x[1], reverse=True)
     if max_size == None:
@@ -131,7 +138,7 @@ def normalise(train_and_valid, test, vocab, cutoff):
     for sets in tqdm(train_and_valid): 
         tr_v_temp.append((token_to_index(sets[0][:cutoff], vocab), token_to_index(sets[1][:cutoff], vocab), token_to_index(sets[-1][:cutoff], vocab)))
     for sets in tqdm(test):  
-        t_temp.append((token_to_index(sets[0], vocab), token_to_index(sets[1], vocab), token_to_index(sets[-1], vocab)))
+        t_temp.append((token_to_index(sets[0][:cutoff], vocab), token_to_index(sets[1][:cutoff], vocab), token_to_index(sets[-1][:cutoff], vocab)))
     
     return tr_v_temp, t_temp
 

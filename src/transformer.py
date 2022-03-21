@@ -215,25 +215,16 @@ class Transformer(nn.Module):
         
         return dec_temp
     
-    def _reconstruction_loss(self, src, trg, hard_loss=False):
+    def _reconstruction_loss(self, src, trg):
         '''
         Calculate reconstruction loss
         src: (B, T, V)  xxxx <eos>
         trg: (B, T) xxxx <eos>
-
-        if hard_loss: src: (B, T, V) in one-hot format
-        if penalty, return loss in (B)
-        if not penalty, return loss in (B*T)
+        return loss in (B*T)
         '''
 
         B, _, V = src.size()
-
-        if hard_loss:
-            src = straight_through_logits(src)
-        
-        loss = self.loss(src.contiguous().view(-1, V), trg.contiguous().view(-1))
-        
-        return loss
+        return self.loss(src.contiguous().view(-1, V), trg.contiguous().view(-1))
     
     def _KL_loss(self, q, p):
         '''
