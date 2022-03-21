@@ -25,26 +25,28 @@ class Trainer(object):
         self.configs.device = 'cuda' if torch.cuda.is_available() else 'cpu'
         self.device = self.configs.device
         
+        assert self.configs.data in ['quora', 'mscoco']
+        
         if self.configs.data == 'quora':
             un_data, train_data, valid_data, test_data, vocab, test_split = self._build_quora_data(self.configs.max_vocab,
-                self.configs.un_train_size, self.configs.train_size, self.configs.valid_size, self.configs.test_size)
-        elif self.configs.data == 'mscoco':
+                self.configs.un_train_size, self.configs.train_size, self.configs.quora_valid, self.configs.quora_test)
+        if self.configs.data == 'mscoco':
             un_data, train_data, valid_data, test_data, vocab, test_split = self._build_mscoco_data(self.configs.max_vocab,
-                self.configs.un_train_size, self.configs.train_size, self.configs.valid_size, self.configs.test_size)
-        else:
-            un_data, train_data, valid_data, test_data = self._build_mscoco_bert(self.configs.un_train_size, 
-                self.configs.train_size, self.configs.valid_size, self.configs.test_size)
-            print(f'Dataset: {configs.data} not defined.')
-            return
+                self.configs.un_train_size, self.configs.train_size, self.configs.mscoco_valid, self.configs.mscoco_test)
         
         self.un_data = un_data
         self.train_data = train_data
         self.valid_data = valid_data
         self.test_data = test_data
+        self.test_split = test_split
+
         self.vocab = vocab
         self.configs.vocab_size = len(self.vocab)
-        print(f'{"-"*20} Data Description {"-"*20}')
-        print(f'Use {self.configs.un_train_size} unsupervised data; {self.configs.train_size} training data; {self.configs.valid_size} validation data and {self.configs.test_size} testing data.')
+        print(f'{"-"*20} {self.configs.data} Data Description {"-"*20}') 
+        if self.configs.data == 'quora':
+            print(f'Use {self.configs.un_train_size} unsupervised data; {self.configs.train_size} training data; {self.configs.quora_valid} validation data and {self.configs.quora_test} testing data.')
+        if self.configs.data == 'mscoco':
+            print(f'Use {self.configs.un_train_size} unsupervised data; {self.configs.train_size} training data; {self.configs.mscoco_valid} validation data and {self.configs.mscoco_test} testing data.')
         print(f'{"-"*40}')
 
         self.model = Transformer(self.configs)
@@ -73,9 +75,11 @@ class Trainer(object):
         calculate_bound(test_, test_split, True, True, True)
         print(f'{"-"*20} Print first {first_n} Results {"-"*20}')
         test__ = test_[:first_n]
-        for pred, refer in test__:
+        for index, pred in enumerate(test__):
             print(f'Prediction: {stringify(pred)}')
-            print(f'Reference: {stringify(refer)}')
+            ref = test_split[index][1:-1]
+            for reff in ref:
+                print(f'Reference: {stringify(reff)}')
             print(f'{"-"*40}')
         
 
@@ -172,7 +176,7 @@ class Trainer(object):
         print(f'Seq2seq experiment done in {time.time() - EXP_START}s.')
         print(f'{"-"*40}')
 
-        self.main_inference(self.test_data, self.vocab)
+        self.main_inference(self.test_data, self.vocab, self.test_split)
 
     def main_vae(self):
         lm_dir = self.configs.lm_dir
@@ -359,6 +363,7 @@ class Trainer(object):
     def _build_quora_data(self, max_vocab, un_train_size, train_size, valid_size, test_size):
         
         assert un_train_size >= train_size
+        assert un_train_size <= self.configs.quora_train_max
         len_diff = un_train_size - train_size
         
         sentence_pairs = process_quora(self.configs.quora_fp)
@@ -394,6 +399,7 @@ class Trainer(object):
     def _build_mscoco_data(self, max_vocab, un_train_size, train_size, valid_size, test_size):
         
         assert un_train_size >= train_size
+        assert un_train_size <= self.configs.mscoco_train_max
         len_diff = un_train_size - train_size
         
         train_valid_split = process_mscoco(self.configs.mscoco_fp_train, self.configs.use_spacy)
