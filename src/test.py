@@ -14,9 +14,9 @@ def main():
     parser.add_argument(
         '-d', '--data', type=str, default='mscoco')
     parser.add_argument(
-        '-utrs', '--un_train_size', type=int, default=70000)
+        '-utrs', '--un_train_size', type=int, default=7000)
     parser.add_argument(
-        '-trs', '--train_size', type=int, default=70000)
+        '-trs', '--train_size', type=int, default=7000)
     
     parser.add_argument(
         '-lh', '--latent_hard', type=bool, default=False)
@@ -52,14 +52,14 @@ def main():
     parser.add_argument(
         '-seq2seqme', '--seq2seq_max_epoch', type=int, default=2)
     parser.add_argument(
-        '-seq2seqlr', '--seq2seq_lr', type=int, default=1e-4)
+        '-seq2seqlr', '--seq2seq_lr', type=int, default=1e-3)
     parser.add_argument(
         '-duo_train', '--duo', type=bool, default=True)
 
     parser.add_argument(
         '-semidir', '--semi_dir', type=str, default='../model/semi/')
     parser.add_argument(
-        '-semime', '--semi_max_epoch', type=int, default=5)
+        '-semime', '--semi_max_epoch', type=int, default=2)
     parser.add_argument(
         '-semilr', '--semi_lr', type=int, default=1e-4)
     
@@ -84,8 +84,8 @@ def main():
     interface = Trainer(configs)
     # interface.main_lm()
     # interface.main_vae()
-    interface.main_seq2seq()
-    # interface.main_semi_supervised()
+    # interface.main_seq2seq()
+    interface.main_semi_supervised()
 
 
 if __name__ == "__main__":

@@ -55,31 +55,48 @@ class Trainer(object):
         print(f'Set model as {self._count_parameters(self.model)} parameters')
         print(f'{"-"*40}')
     
-    def main_inference(self, dataloader, vocab, test_split):
+    def main_inference(self, dataloader, vocab, test_split, interpolate_latent=True):
+        self.model.eval()
 
         print(f'{"-"*20} Perform inference {"-"*20}')
 
         pred_idx = []
+        latent_sample_idx = []
         first_n = 30
+        latent_samples = 5
 
         for idx, (src, trg, src_) in enumerate(tqdm(dataloader)):
 
-            trg_batch = self.model.inference(self.model.src_encoder, self.model.trg_decoder, src, 50)
-
+            trg_batch = self.model.inference(self.model.src_encoder, self.model.trg_decoder, src, self.configs.max_len)
             for index, _ in enumerate(trg_batch):
                 pred_idx.append(trg_batch[index].cpu())
+            
+            if interpolate_latent:
+                temp = []
+                for j in range(latent_samples):
+                    latent_batch = self.model.encode_sample_decode(self.model.src_encoder, self.model.trg_decoder, src, trg, self.configs.latent_hard, self.configs.gumbel_max, 0.1)
+                    temp.append(latent_batch)
+                for index, _ in enumerate(temp[0]):
+                    latent_sample_idx.append([tem[index].cpu() for tem in temp])
         
         test_ = [index_to_token(remove_bos_eos(pred, self.configs.bos_id, self.configs.eos_id), vocab) for pred in pred_idx]
+        if interpolate_latent:
+            latent_sample_ = [[index_to_token(remove_bos_eos(s, self.configs.bos_id, self.configs.eos_id), vocab) for s in sets] for sets in latent_sample_idx]
         
+
         print(f'{"-"*20} Calculate Final Results {"-"*20}')
         calculate_bound(test_, test_split, True, True, True)
         print(f'{"-"*20} Print first {first_n} Results {"-"*20}')
         test__ = test_[:first_n]
+        latent_sample__ = latent_sample_[:first_n]
         for index, pred in enumerate(test__):
             print(f'Prediction: {stringify(pred)}')
             ref = test_split[index][1:-1]
             for reff in ref:
                 print(f'Reference: {stringify(reff)}')
+            if interpolate_latent:
+                for latent in latent_sample__[index]:
+                    print(f'Latent Sample: {stringify(latent)}')
             print(f'{"-"*40}')
         
 
@@ -138,6 +155,7 @@ class Trainer(object):
         grad_clip = self.configs.grad_clip
         seed = self.configs.seed
         experiment_id = self.configs.seq2seq_id
+        seq2seq_duo = self.configs.duo
 
         print(f'{"-"*20} Initialise seq2seq experiment {"-"*20}')
         print(f'Use model directory {model_dir}')
@@ -160,8 +178,8 @@ class Trainer(object):
         EXP_START = time.time()
         best_valid_loss = float('inf')
         for epoch in range(max_epoch):
-            train_loss = self._train_seq2seq(self.train_data, optimizer, grad_clip)
-            valid_loss = self._evaluate_seq2seq(self.valid_data)
+            train_loss = self._train_seq2seq(self.train_data, optimizer, grad_clip, duo=seq2seq_duo)
+            valid_loss = self._evaluate_seq2seq(self.valid_data, duo=False)
             print(f'{"-"*20} Epoch {epoch + 1}/{max_epoch} training done {"-"*20}')
             if valid_loss < best_valid_loss:
                 best_valid_loss = valid_loss 
@@ -294,7 +312,8 @@ class Trainer(object):
         best_valid_loss = float('inf')
         for epoch in range(max_epoch):
             train_loss = self._train_semi(self.train_data, optimizer, grad_clip, temperature[epoch], alpha_factor, beta_factor)
-            valid_loss = self._evaluate_semi(self.valid_data, low_temp, alpha_factor, beta_factor)
+            valid_loss_ = self._evaluate_semi(self.valid_data, low_temp, alpha_factor, beta_factor)
+            valid_loss = self._evaluate_seq2seq(self.valid_data, duo=False)
             
             print(f'{"-"*20} Epoch {epoch + 1}/{max_epoch} training done {"-"*20}')
             
@@ -310,7 +329,7 @@ class Trainer(object):
         print(f'SEMI experiment done in {time.time() - EXP_START}s.')
         print(f'{"-"*40}')
 
-        self.main_inference(self.test_data, self.vocab)
+        self.main_inference(self.test_data, self.vocab, self.test_split)
 
     def main_enhance(self):
         
@@ -392,7 +411,7 @@ class Trainer(object):
         un_dl = DataLoader(un_train_idx, batch_size=self.configs.batch_size, shuffle=True, collate_fn=self._batchify)
         train_dl = DataLoader(train_idx, batch_size=self.configs.batch_size, shuffle=True, collate_fn=self._batchify)
         valid_dl = DataLoader(valid_idx, batch_size=self.configs.batch_size, shuffle=False, collate_fn=self._batchify)
-        test_dl = DataLoader(test_idx, batch_size=self.configs.batch_size, shuffle=False, collate_fn=self._batchify)
+        test_dl = DataLoader(test_idx, batch_size=self.configs.test_batch_size, shuffle=False, collate_fn=self._batchify)
 
         return un_dl, train_dl, valid_dl, test_dl, VOCAB
 
@@ -430,7 +449,7 @@ class Trainer(object):
         un_dl = DataLoader(un_train_idx, batch_size=self.configs.batch_size, shuffle=True, collate_fn=self._batchify)
         train_dl = DataLoader(train_idx, batch_size=self.configs.batch_size, shuffle=True, collate_fn=self._batchify)
         valid_dl = DataLoader(valid_idx, batch_size=self.configs.batch_size, shuffle=False, collate_fn=self._batchify)
-        test_dl = DataLoader(test_idx, batch_size=self.configs.batch_size, shuffle=False, collate_fn=self._batchify)
+        test_dl = DataLoader(test_idx, batch_size=self.configs.test_batch_size, shuffle=False, collate_fn=self._batchify)
 
         return un_dl, train_dl, valid_dl, test_dl, VOCAB, test_split
 
