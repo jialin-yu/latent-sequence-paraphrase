@@ -62,22 +62,25 @@ class Trainer(object):
 
         pred_idx = []
         latent_sample_idx = []
-        first_n = 30
+        first_n = 10
         latent_samples = 5
+        counter = 0
+        for idx, (src, trg, src_) in enumerate(tqdm(dataloader)):      
+            trg_ = self.model.inference(self.model.src_encoder, self.model.trg_decoder, src, self.configs.max_len)
+            for trg in trg_:
+                pred_idx.append(trg.cpu())
 
         for idx, (src, trg, src_) in enumerate(tqdm(dataloader)):
-
-            trg_batch = self.model.inference(self.model.src_encoder, self.model.trg_decoder, src, self.configs.max_len)
-            for index, _ in enumerate(trg_batch):
-                pred_idx.append(trg_batch[index].cpu())
-            
-            if interpolate_latent:
-                temp = []
-                for j in range(latent_samples):
-                    latent_batch = self.model.encode_sample_decode(self.model.src_encoder, self.model.trg_decoder, src, trg, self.configs.latent_hard, self.configs.gumbel_max, 0.1)
-                    temp.append(latent_batch)
-                for index, _ in enumerate(temp[0]):
-                    latent_sample_idx.append([tem[index].cpu() for tem in temp])
+            for index, src_ in enumerate(src):
+                if interpolate_latent:
+                    temp = []
+                    for j in range(latent_samples):
+                        latent_, _ = self.model.encode_sample_decode(self.model.src_encoder, self.model.trg_decoder, src[index].unsqueeze(0), trg[index].unsqueeze(0), self.configs.latent_hard, self.configs.gumbel_max, 0.1)
+                        temp.append(torch.argmax(latent_, dim=-1).squeeze().cpu())
+                    latent_sample_idx.append(temp)
+            counter += 1
+            if counter == first_n:
+                break
         
         test_ = [index_to_token(remove_bos_eos(pred, self.configs.bos_id, self.configs.eos_id), vocab) for pred in pred_idx]
         if interpolate_latent:
@@ -87,15 +90,13 @@ class Trainer(object):
         print(f'{"-"*20} Calculate Final Results {"-"*20}')
         calculate_bound(test_, test_split, True, True, True)
         print(f'{"-"*20} Print first {first_n} Results {"-"*20}')
-        test__ = test_[:first_n]
-        latent_sample__ = latent_sample_[:first_n]
-        for index, pred in enumerate(test__):
-            print(f'Prediction: {stringify(pred)}')
+        for index, _ in enumerate(latent_sample_):
+            print(f'Prediction: {stringify(test_[index])}')
             ref = test_split[index][1:-1]
             for reff in ref:
                 print(f'Reference: {stringify(reff)}')
             if interpolate_latent:
-                for latent in latent_sample__[index]:
+                for latent in latent_sample_[index]:
                     print(f'Latent Sample: {stringify(latent)}')
             print(f'{"-"*40}')
         
@@ -312,7 +313,7 @@ class Trainer(object):
         best_valid_loss = float('inf')
         for epoch in range(max_epoch):
             train_loss = self._train_semi(self.train_data, optimizer, grad_clip, temperature[epoch], alpha_factor, beta_factor)
-            valid_loss_ = self._evaluate_semi(self.valid_data, low_temp, alpha_factor, beta_factor)
+            # valid_loss_ = self._evaluate_semi(self.valid_data, low_temp, alpha_factor, beta_factor)
             valid_loss = self._evaluate_seq2seq(self.valid_data, duo=False)
             
             print(f'{"-"*20} Epoch {epoch + 1}/{max_epoch} training done {"-"*20}')
@@ -411,7 +412,7 @@ class Trainer(object):
         un_dl = DataLoader(un_train_idx, batch_size=self.configs.batch_size, shuffle=True, collate_fn=self._batchify)
         train_dl = DataLoader(train_idx, batch_size=self.configs.batch_size, shuffle=True, collate_fn=self._batchify)
         valid_dl = DataLoader(valid_idx, batch_size=self.configs.batch_size, shuffle=False, collate_fn=self._batchify)
-        test_dl = DataLoader(test_idx, batch_size=self.configs.test_batch_size, shuffle=False, collate_fn=self._batchify)
+        test_dl = DataLoader(test_idx, batch_size=self.configs.batch_size, shuffle=False, collate_fn=self._batchify)
 
         return un_dl, train_dl, valid_dl, test_dl, VOCAB
 
@@ -449,7 +450,7 @@ class Trainer(object):
         un_dl = DataLoader(un_train_idx, batch_size=self.configs.batch_size, shuffle=True, collate_fn=self._batchify)
         train_dl = DataLoader(train_idx, batch_size=self.configs.batch_size, shuffle=True, collate_fn=self._batchify)
         valid_dl = DataLoader(valid_idx, batch_size=self.configs.batch_size, shuffle=False, collate_fn=self._batchify)
-        test_dl = DataLoader(test_idx, batch_size=self.configs.test_batch_size, shuffle=False, collate_fn=self._batchify)
+        test_dl = DataLoader(test_idx, batch_size=self.configs.batch_size, shuffle=False, collate_fn=self._batchify)
 
         return un_dl, train_dl, valid_dl, test_dl, VOCAB, test_split
 

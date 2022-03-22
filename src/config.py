@@ -36,7 +36,6 @@ class Configs(object):
         self.max_len = max(self.mscoco_max_len, self.quora_max_len) + 2
 
         self.batch_size = 32
-        self.test_batch_size = 16
         self.vocab_size = None
 
         self.inf = float('inf')
