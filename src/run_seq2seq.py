@@ -6,17 +6,16 @@ import torch
 
 def main():
     '''
-    if batch_loss: penalty on long sequence; if not: sequence length does not matter
-    if hard: use catergorical representation; if not: use smooth representation 
+    main function for seq2seq learning framework
     '''
     
     parser = argparse.ArgumentParser()
     parser.add_argument(
         '-d', '--data', type=str, default='quora')
     parser.add_argument(
-        '-utrs', '--un_train_size', type=int, default=50000)
+        '-utrs', '--un_train_size', type=int, default=100000)
     parser.add_argument(
-        '-trs', '--train_size', type=int, default=50000)
+        '-trs', '--train_size', type=int, default=100000)
     
     parser.add_argument(
         '-lh', '--latent_hard', type=bool, default=False)
@@ -57,7 +56,7 @@ def main():
     parser.add_argument(
         '-semidir', '--semi_dir', type=str, default='../model/semi/')
     parser.add_argument(
-        '-semime', '--semi_max_epoch', type=int, default=15)
+        '-semime', '--semi_max_epoch', type=int, default=20)
     parser.add_argument(
         '-semilr', '--semi_lr', type=int, default=1e-4)
     

@@ -117,9 +117,9 @@ class Trainer(object):
                     for j in range(size):
                         latent_, _ = self.model.encode_sample_decode(self.model.src_encoder, self.model.trg_decoder, src[index].unsqueeze(0), trg[index].unsqueeze(0), self.configs.latent_hard, self.configs.gumbel_max, 0.1)
                         temp.append(torch.argmax(latent_, dim=-1).squeeze().cpu())
-                        latent_sample_idx.append(temp)
+                    latent_sample_idx.append(temp)
                     counter += 1
-                    if counter == 30:
+                    if counter == first_n:
                         return latent_sample_idx
     
     def main_lm(self):
@@ -336,7 +336,7 @@ class Trainer(object):
             wandb.log({'train-loss': train_loss}, step=epoch+1)
             valid_loss = self._evaluate_semi(self.valid_data, low_temp, alpha_factor, beta_factor)
             wandb.log({'valid-loss': valid_loss}, step=epoch+1)
-            valid_loss_ = self._evaluate_seq2seq(self.valid_data, duo=False)
+            valid_loss_ = self._evaluate_seq2seq(self.valid_data, duo=True)
             wandb.log({'valid-seq2seq-loss': valid_loss_}, step=epoch+1)
             
             print(f'{"-"*20} Epoch {epoch + 1}/{max_epoch} training done {"-"*20}')

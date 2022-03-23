@@ -21,9 +21,9 @@ class Configs(object):
         
         self.quora_max_len = 25
         self.quora_min_freq = 5
-        self.quora_train_max = 100000
+        self.quora_train_max = 50000
         self.quora_valid = 3000
-        self.quora_test = 30000
+        self.quora_test = 20000
         self.qu_batch_size = 16
 
         self.mscoco_max_len = 25
@@ -49,24 +49,28 @@ class Configs(object):
             setattr(self, name, value)
 
         if self.lm_dir:
+            if not os.path.exists(self.lm_dir):
+                os.makedirs(self.lm_dir)
             lm_id = f'D_{self.data}_UNTR_{self.un_train_size}_L_{self.lm_lr}_S_{self.seed}_P_{self.use_pseudo}_EP_{self.lm_max_epoch}'
             self.lm_id = lm_id
 
         if self.vae_dir:
+            if not os.path.exists(self.vae_dir):
+                os.makedirs(self.vae_dir)
             vae_id = f'D_{self.data}_UNTR_{self.un_train_size}_L_{self.vae_lr}_S_{self.seed}_P_{self.use_pseudo}_HL_{self.latent_hard}_GM_{self.gumbel_max}_EP_{self.vae_max_epoch}'
             self.vae_id = vae_id
 
         if self.seq2seq_dir:
+            if not os.path.exists(self.seq2seq_dir):
+                os.makedirs(self.seq2seq_dir)
             seq2seq_id = f'D_{self.data}_TR_{self.train_size}_L_{self.seq2seq_lr}_S_{self.seed}_DUO_{self.duo}_EP_{self.seq2seq_max_epoch}'
             self.seq2seq_id = seq2seq_id
 
         if self.semi_dir:
-            semi_id = f'D_{self.data}_UNTR_{self.un_train_size}_TR_{self.train_size}_L_{self.seq2seq_lr}_S_{self.seed}_P_{self.use_pseudo}_HL_{self.latent_hard}_GM_{self.gumbel_max}_EP_{self.semi_max_epoch}'
+            if not os.path.exists(self.semi_dir):
+                os.makedirs(self.semi_dir)
+            semi_id = f'D_{self.data}_UNTR_{self.un_train_size}_TR_{self.train_size}_L_{self.semi_lr}_S_{self.seed}_P_{self.use_pseudo}_HL_{self.latent_hard}_GM_{self.gumbel_max}_EP_{self.semi_max_epoch}'
             self.semi_id = semi_id
-        
-        for dir in [self.lm_dir, self.vae_dir, self.seq2seq_dir, self.semi_dir]:
-            if not os.path.exists(dir):
-                os.makedirs(dir)
         
         
 
