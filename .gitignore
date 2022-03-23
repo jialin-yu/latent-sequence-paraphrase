@@ -4,3 +4,4 @@ playground/
 model/
 **/__pycache__/
 note/
+src/wandb/

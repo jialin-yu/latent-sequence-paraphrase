@@ -24,18 +24,19 @@ class Configs(object):
         self.quora_train_max = 100000
         self.quora_valid = 3000
         self.quora_test = 30000
+        self.qu_batch_size = 16
 
         self.mscoco_max_len = 25
         self.mscoco_min_freq = 5
         self.mscoco_train_max = 75000
         self.mscoco_valid = 5000
         self.mscoco_test = 40000
+        self.ms_batch_size = 32
 
         self.use_spacy = False
 
         self.max_len = max(self.mscoco_max_len, self.quora_max_len) + 2
 
-        self.batch_size = 32
         self.vocab_size = None
 
         self.inf = float('inf')

@@ -12,16 +12,14 @@ def main():
     
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        '-d', '--data', type=str, default='mscoco')
+        '-d', '--data', type=str, default='quora')
     parser.add_argument(
-        '-utrs', '--un_train_size', type=int, default=70000)
+        '-utrs', '--un_train_size', type=int, default=100000)
     parser.add_argument(
-        '-trs', '--train_size', type=int, default=70000)
+        '-trs', '--train_size', type=int, default=100000)
     
     parser.add_argument(
         '-lh', '--latent_hard', type=bool, default=False)
-    parser.add_argument(
-        '-hl', '--hard_loss', type=bool, default=False)
     
     parser.add_argument(
         '-gum', '--gumbel_max', type=bool, default=True)
@@ -59,7 +57,7 @@ def main():
     parser.add_argument(
         '-semidir', '--semi_dir', type=str, default='../model/semi/')
     parser.add_argument(
-        '-semime', '--semi_max_epoch', type=int, default=10)
+        '-semime', '--semi_max_epoch', type=int, default=20)
     parser.add_argument(
         '-semilr', '--semi_lr', type=int, default=1e-4)
     

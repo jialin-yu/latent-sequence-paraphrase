@@ -15,6 +15,7 @@ from sample import straight_through_softmax
 
 from pipeline import index_to_token, remove_bos_eos, stringify
 from sklearn.utils import shuffle, resample
+import wandb
 
 
 class Trainer(object):
@@ -61,48 +62,65 @@ class Trainer(object):
         print(f'{"-"*20} Perform inference {"-"*20}')
 
         pred_idx = []
-        latent_sample_idx = []
         first_n = 10
         latent_samples = 5
-        counter = 0
         for idx, (src, trg, src_) in enumerate(tqdm(dataloader)):      
             trg_ = self.model.inference(self.model.src_encoder, self.model.trg_decoder, src, self.configs.max_len)
             for trg in trg_:
                 pred_idx.append(trg.cpu())
 
-        for idx, (src, trg, src_) in enumerate(tqdm(dataloader)):
-            for index, src_ in enumerate(src):
-                if interpolate_latent:
-                    temp = []
-                    for j in range(latent_samples):
-                        latent_, _ = self.model.encode_sample_decode(self.model.src_encoder, self.model.trg_decoder, src[index].unsqueeze(0), trg[index].unsqueeze(0), self.configs.latent_hard, self.configs.gumbel_max, 0.1)
-                        temp.append(torch.argmax(latent_, dim=-1).squeeze().cpu())
-                    latent_sample_idx.append(temp)
-            counter += 1
-            if counter == first_n:
-                break
+        if interpolate_latent:
+            print(f'{"-"*20} Perform Latent Sampling {"-"*20}')
+            latent_sample_idx = self._latent_interpolate(dataloader, first_n, latent_samples)
         
         test_ = [index_to_token(remove_bos_eos(pred, self.configs.bos_id, self.configs.eos_id), vocab) for pred in pred_idx]
         if interpolate_latent:
             latent_sample_ = [[index_to_token(remove_bos_eos(s, self.configs.bos_id, self.configs.eos_id), vocab) for s in sets] for sets in latent_sample_idx]
         
+        if interpolate_latent:
+            table = wandb.Table(columns=['id', 'pred', 'ref', 'ls'])
+        else:
+            table = wandb.Table(columns=['id', 'pred', 'ref'])
 
         print(f'{"-"*20} Calculate Final Results {"-"*20}')
         calculate_bound(test_, test_split, True, True, True)
         print(f'{"-"*20} Print first {first_n} Results {"-"*20}')
-        for index, _ in enumerate(latent_sample_):
-            print(f'Prediction: {stringify(test_[index])}')
-            ref = test_split[index][1:-1]
-            for reff in ref:
-                print(f'Reference: {stringify(reff)}')
-            if interpolate_latent:
+        test__ = test_[:first_n]
+        if interpolate_latent:
+            for index, _ in enumerate(test__):
+                print(f'Prediction: {stringify(test__[index])}')
+                ref = test_split[index][1:-1]
+                for reff in ref:
+                    print(f'Reference: {stringify(reff)}')
                 for latent in latent_sample_[index]:
                     print(f'Latent Sample: {stringify(latent)}')
+                table.add_data(index, stringify(test__[index]), [stringify(reff) for reff in ref], [stringify(latent) for latent in latent_sample_[index]])
+            print(f'{"-"*40}')
+        else:
+            for index, _ in enumerate(test__):
+                print(f'Prediction: {stringify(test__[index])}')
+                ref = test_split[index][1:-1]
+                for reff in ref:
+                    print(f'Reference: {stringify(reff)}')
+                table.add_data(index, stringify(test__[index]), [stringify(reff) for reff in ref])
             print(f'{"-"*40}')
         
+        wandb.log({'Table': table})
+        
+    def _latent_interpolate(self, dataloader, first_n, size):
+        latent_sample_idx = []
+        counter = 0
 
-
-
+        for idx, (src, trg, src_) in enumerate(tqdm(dataloader)):
+                for index, src_ in enumerate(src):
+                    temp = []
+                    for j in range(size):
+                        latent_, _ = self.model.encode_sample_decode(self.model.src_encoder, self.model.trg_decoder, src[index].unsqueeze(0), trg[index].unsqueeze(0), self.configs.latent_hard, self.configs.gumbel_max, 0.1)
+                        temp.append(torch.argmax(latent_, dim=-1).squeeze().cpu())
+                        latent_sample_idx.append(temp)
+                    counter += 1
+                    if counter == 30:
+                        return latent_sample_idx
     
     def main_lm(self):
         model_dir = self.configs.lm_dir
@@ -195,7 +213,7 @@ class Trainer(object):
         print(f'Seq2seq experiment done in {time.time() - EXP_START}s.')
         print(f'{"-"*40}')
 
-        self.main_inference(self.test_data, self.vocab, self.test_split)
+        self.main_inference(self.test_data, self.vocab, self.test_split, interpolate_latent=False)
 
     def main_vae(self):
         lm_dir = self.configs.lm_dir
@@ -262,6 +280,8 @@ class Trainer(object):
         print(f'VAE experiment done in {time.time() - EXP_START}s.')
 
     def main_semi_supervised(self):
+
+        wandb.init(project='paraphrase-semi', config=self.configs, entity='du_jialin')
         lm_dir = self.configs.lm_dir
         lm_id = self.configs.lm_id
 
@@ -313,13 +333,16 @@ class Trainer(object):
         best_valid_loss = float('inf')
         for epoch in range(max_epoch):
             train_loss = self._train_semi(self.train_data, optimizer, grad_clip, temperature[epoch], alpha_factor, beta_factor)
-            # valid_loss_ = self._evaluate_semi(self.valid_data, low_temp, alpha_factor, beta_factor)
-            valid_loss = self._evaluate_seq2seq(self.valid_data, duo=False)
+            wandb.log({'train-loss': train_loss}, step=epoch+1)
+            valid_loss = self._evaluate_semi(self.valid_data, low_temp, alpha_factor, beta_factor)
+            wandb.log({'valid-loss': valid_loss}, step=epoch+1)
+            valid_loss_ = self._evaluate_seq2seq(self.valid_data, duo=False)
+            wandb.log({'valid-seq2seq-loss': valid_loss_}, step=epoch+1)
             
             print(f'{"-"*20} Epoch {epoch + 1}/{max_epoch} training done {"-"*20}')
             
-            if valid_loss < best_valid_loss:
-                best_valid_loss = valid_loss 
+            if valid_loss_ < best_valid_loss:
+                best_valid_loss = valid_loss_
                 self._save_model(self.model, model_dir, experiment_id)
                 print(f'Save model in epoch {epoch + 1}.')
         
@@ -327,6 +350,7 @@ class Trainer(object):
         self._load_model(self.model, model_dir, experiment_id)
         self.model.to(self.device)
         valid_loss = self._evaluate_semi(self.test_data, low_temp, alpha_factor, beta_factor)
+        # valid_loss = self._evaluate_seq2seq(self.valid_data, duo=False)
         print(f'SEMI experiment done in {time.time() - EXP_START}s.')
         print(f'{"-"*40}')
 
@@ -409,12 +433,12 @@ class Trainer(object):
 
         valid_idx = train_valid_idx[-valid_size:]
 
-        un_dl = DataLoader(un_train_idx, batch_size=self.configs.batch_size, shuffle=True, collate_fn=self._batchify)
-        train_dl = DataLoader(train_idx, batch_size=self.configs.batch_size, shuffle=True, collate_fn=self._batchify)
-        valid_dl = DataLoader(valid_idx, batch_size=self.configs.batch_size, shuffle=False, collate_fn=self._batchify)
-        test_dl = DataLoader(test_idx, batch_size=self.configs.batch_size, shuffle=False, collate_fn=self._batchify)
+        un_dl = DataLoader(un_train_idx, batch_size=self.configs.qu_batch_size, shuffle=True, collate_fn=self._batchify)
+        train_dl = DataLoader(train_idx, batch_size=self.configs.qu_batch_size, shuffle=True, collate_fn=self._batchify)
+        valid_dl = DataLoader(valid_idx, batch_size=self.configs.qu_batch_size, shuffle=False, collate_fn=self._batchify)
+        test_dl = DataLoader(test_idx, batch_size=self.configs.qu_batch_size, shuffle=False, collate_fn=self._batchify)
 
-        return un_dl, train_dl, valid_dl, test_dl, VOCAB
+        return un_dl, train_dl, valid_dl, test_dl, VOCAB, test_split
 
     def _build_mscoco_data(self, max_vocab, un_train_size, train_size, valid_size, test_size):
         
@@ -447,10 +471,10 @@ class Trainer(object):
 
         valid_idx = train_valid_idx[-valid_size:]
 
-        un_dl = DataLoader(un_train_idx, batch_size=self.configs.batch_size, shuffle=True, collate_fn=self._batchify)
-        train_dl = DataLoader(train_idx, batch_size=self.configs.batch_size, shuffle=True, collate_fn=self._batchify)
-        valid_dl = DataLoader(valid_idx, batch_size=self.configs.batch_size, shuffle=False, collate_fn=self._batchify)
-        test_dl = DataLoader(test_idx, batch_size=self.configs.batch_size, shuffle=False, collate_fn=self._batchify)
+        un_dl = DataLoader(un_train_idx, batch_size=self.configs.ms_batch_size, shuffle=True, collate_fn=self._batchify)
+        train_dl = DataLoader(train_idx, batch_size=self.configs.ms_batch_size, shuffle=True, collate_fn=self._batchify)
+        valid_dl = DataLoader(valid_idx, batch_size=self.configs.ms_batch_size, shuffle=False, collate_fn=self._batchify)
+        test_dl = DataLoader(test_idx, batch_size=self.configs.ms_batch_size, shuffle=False, collate_fn=self._batchify)
 
         return un_dl, train_dl, valid_dl, test_dl, VOCAB, test_split
 
