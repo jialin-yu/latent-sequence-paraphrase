@@ -19,19 +19,21 @@ class Configs(object):
 
         self.max_vocab = None
         
-        self.quora_max_len = 25
+        self.quora_max_len = 20
         self.quora_min_freq = 5
         self.quora_train_max = 50000
         self.quora_valid = 3000
         self.quora_test = 20000
         self.qu_batch_size = 16
+        
 
-        self.mscoco_max_len = 25
+        self.mscoco_max_len = 20
         self.mscoco_min_freq = 5
         self.mscoco_train_max = 75000
         self.mscoco_valid = 5000
         self.mscoco_test = 40000
         self.ms_batch_size = 32
+       
 
         self.use_spacy = False
 
@@ -45,13 +47,15 @@ class Configs(object):
 
         self.device = None
 
+        self.fixed_temperature = None
+
         for name, value in kwargs.items():
             setattr(self, name, value)
 
         if self.lm_dir:
             if not os.path.exists(self.lm_dir):
                 os.makedirs(self.lm_dir)
-            lm_id = f'D_{self.data}_UNTR_{self.un_train_size}_L_{self.lm_lr}_S_{self.seed}_P_{self.use_pseudo}_EP_{self.lm_max_epoch}'
+            lm_id = f'D_{self.data}_L_{self.lm_lr}_S_{self.seed}_P_{self.use_pseudo}_EP_{self.lm_max_epoch}'
             self.lm_id = lm_id
 
         if self.vae_dir:

@@ -128,7 +128,7 @@ class Transformer(nn.Module):
         trg_ (B, T, V) <bos> y_ <eos>
         trg_logits (B, T-1, V) y_ <eos>
         '''
-        _, T = trg.size()
+        _, T = src.size()
         
         src_pm, _ = self._get_padding_mask(src, src)
         enc_src = encoder.encode(src, None, src_pm, True)
@@ -164,7 +164,7 @@ class Transformer(nn.Module):
         # dec_temp should have size (B, T, V)
         # print(dec_temp.size()[:-1])
         # print(trg.size())
-        assert dec_temp.size()[:-1] == trg.size()
+        assert dec_temp.size()[:-1] == src.size()
         # out = torch.cat((dec_temp, dec_out), dim=1)
         return dec_temp, dec_out
     

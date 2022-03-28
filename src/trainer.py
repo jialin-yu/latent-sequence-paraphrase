@@ -29,12 +29,13 @@ class Trainer(object):
         assert self.configs.data in ['quora', 'mscoco']
         
         if self.configs.data == 'quora':
-            un_data, train_data, valid_data, test_data, vocab, test_split = self._build_quora_data(self.configs.max_vocab,
+            lm_data, un_data, train_data, valid_data, test_data, vocab, test_split = self._build_quora_data(self.configs.max_vocab,
                 self.configs.un_train_size, self.configs.train_size, self.configs.quora_valid, self.configs.quora_test)
         if self.configs.data == 'mscoco':
-            un_data, train_data, valid_data, test_data, vocab, test_split = self._build_mscoco_data(self.configs.max_vocab,
+            lm_data, un_data, train_data, valid_data, test_data, vocab, test_split = self._build_mscoco_data(self.configs.max_vocab,
                 self.configs.un_train_size, self.configs.train_size, self.configs.mscoco_valid, self.configs.mscoco_test)
         
+        self.lm_data = lm_data
         self.un_data = un_data
         self.train_data = train_data
         self.valid_data = valid_data
@@ -73,9 +74,9 @@ class Trainer(object):
             print(f'{"-"*20} Perform Latent Sampling {"-"*20}')
             latent_sample_idx = self._latent_interpolate(dataloader, first_n, latent_samples)
         
-        test_ = [index_to_token(remove_bos_eos(pred, self.configs.bos_id, self.configs.eos_id), vocab) for pred in pred_idx]
+        test_ = [index_to_token(remove_bos_eos(pred, self.configs.bos_id, self.configs.eos_id, self.configs.pad_id), vocab) for pred in pred_idx]
         if interpolate_latent:
-            latent_sample_ = [[index_to_token(remove_bos_eos(s, self.configs.bos_id, self.configs.eos_id), vocab) for s in sets] for sets in latent_sample_idx]
+            latent_sample_ = [[index_to_token(remove_bos_eos(s, self.configs.bos_id, self.configs.eos_id, self.configs.pad_id), vocab) for s in sets] for sets in latent_sample_idx]
         
         if interpolate_latent:
             table = wandb.Table(columns=['id', 'pred', 'ref', 'ls'])
@@ -106,6 +107,7 @@ class Trainer(object):
             print(f'{"-"*40}')
         
         wandb.log({'Table': table})
+        print(f'{"-"*20} Inference done {"-"*20}')
         
     def _latent_interpolate(self, dataloader, first_n, size):
         latent_sample_idx = []
@@ -153,7 +155,7 @@ class Trainer(object):
         EXP_START = time.time()
         best_valid_loss = float('inf')
         for epoch in range(max_epoch):
-            train_loss = self._train_lm(self.un_data, optimizer, grad_clip)
+            train_loss = self._train_lm(self.lm_data, optimizer, grad_clip)
             valid_loss = self._evaluate_lm(self.valid_data)
             print(f'{"-"*20} Epoch {epoch + 1}/{max_epoch} training done {"-"*20}')
             if valid_loss < best_valid_loss:
@@ -168,6 +170,7 @@ class Trainer(object):
         print(f'LM experiment done in {time.time() - EXP_START}s.')
     
     def main_seq2seq(self):
+        wandb.init(project='paraphrase-seq2seq', config=self.configs, entity='du_jialin')
         model_dir = self.configs.seq2seq_dir
         max_epoch = self.configs.seq2seq_max_epoch
         lr = self.configs.seq2seq_lr
@@ -198,7 +201,12 @@ class Trainer(object):
         best_valid_loss = float('inf')
         for epoch in range(max_epoch):
             train_loss = self._train_seq2seq(self.train_data, optimizer, grad_clip, duo=seq2seq_duo)
+            if seq2seq_duo:
+                wandb.log({'train-loss_duo': train_loss}, step=epoch+1)
+            else:
+                wandb.log({'train-loss': train_loss}, step=epoch+1)
             valid_loss = self._evaluate_seq2seq(self.valid_data, duo=False)
+            wandb.log({'valid-loss': train_loss}, step=epoch+1)
             print(f'{"-"*20} Epoch {epoch + 1}/{max_epoch} training done {"-"*20}')
             if valid_loss < best_valid_loss:
                 best_valid_loss = valid_loss 
@@ -231,8 +239,12 @@ class Trainer(object):
         
         beta_factor = 1
         # temperature guildine from https://sassafras13.github.io/GumbelSoftmax/
-        high_temp = 5
-        low_temp = 0.1 # mostly one-hot format
+        if self.configs.fixed_temperature:
+            high_temp = 0.1
+            low_temp = 0.1
+        else:
+            high_temp = 10
+            low_temp = 0.01
         temperature = list(np.linspace(high_temp, low_temp, max_epoch))
 
         print(f'{"-"*20} Initialise VAE experiment {"-"*20}')
@@ -295,10 +307,18 @@ class Trainer(object):
         if self.configs.use_pretrain_lm:
             self._load_model(self.model, lm_dir, lm_id)
 
-        alpha_factor = 0.5
+        # https://iancovert.com/blog/concrete_temperature/
+        # if fixed temperature, set to 0.1 as in http://proceedings.mlr.press/v80/chen18j/chen18j.pdf
+        # else, set high to 10, low to 0.01 as in http://proceedings.mlr.press/v97/balin19a/balin19a.pdf
+        if self.configs.fixed_temperature:
+            high_temp = 0.1
+            low_temp = 0.1
+        else:
+            high_temp = 10
+            low_temp = 0.01
+
+        alpha_factor = self.configs.train_size / (self.configs.un_train_size + self.configs.train_size)
         beta_factor = 0.5
-        high_temp = 5
-        low_temp = 0.1
         temperature = list(np.linspace(high_temp, low_temp, max_epoch))
 
         print(f'{"-"*20} Initialise SEMI experiment {"-"*20}')
@@ -317,7 +337,7 @@ class Trainer(object):
         print(f'Total model parameters {self._count_parameters(self.model)-self._count_parameters(self.model.prior)} ')
         print(f'Set high temperate as {high_temp} amd low temperature as {low_temp}')
         print(f'Training with beta factor of {beta_factor} for VAE')
-        print(f'Training with alpha factor of {alpha_factor} for supervised loss')
+        print(f'Training with alpha factor of {alpha_factor}: ratio of {alpha_factor} for vae loss and ratio of {1-alpha_factor} for seq2seq loss')
         print(f'{"-"*40}')
 
         
@@ -409,6 +429,7 @@ class Trainer(object):
         assert un_train_size >= train_size
         assert un_train_size <= self.configs.quora_train_max
         len_diff = un_train_size - train_size
+        lm_size = self.configs.quora_train_max
         
         sentence_pairs = process_quora(self.configs.quora_fp)
         sentence_pairs = shuffle(sentence_pairs, random_state=1234)
@@ -425,6 +446,8 @@ class Trainer(object):
         calculate_bound(test_pred, test_split, True, True)
 
         train_valid_idx = shuffle(train_valid_idx, random_state=1234)
+        lm_idx = train_valid_idx[:lm_size]
+        lm_idx = shuffle(lm_idx, random_state=1234)
         un_train_idx = train_valid_idx[:un_train_size]
         un_train_idx = shuffle(un_train_idx, random_state=1234)
         train_idx = train_valid_idx[:train_size]
@@ -433,18 +456,20 @@ class Trainer(object):
 
         valid_idx = train_valid_idx[-valid_size:]
 
+        lm_dl = DataLoader(lm_idx, batch_size=self.configs.qu_batch_size, shuffle=True, collate_fn=self._batchify)
         un_dl = DataLoader(un_train_idx, batch_size=self.configs.qu_batch_size, shuffle=True, collate_fn=self._batchify)
         train_dl = DataLoader(train_idx, batch_size=self.configs.qu_batch_size, shuffle=True, collate_fn=self._batchify)
         valid_dl = DataLoader(valid_idx, batch_size=self.configs.qu_batch_size, shuffle=False, collate_fn=self._batchify)
         test_dl = DataLoader(test_idx, batch_size=self.configs.qu_batch_size, shuffle=False, collate_fn=self._batchify)
 
-        return un_dl, train_dl, valid_dl, test_dl, VOCAB, test_split
+        return lm_dl, un_dl, train_dl, valid_dl, test_dl, VOCAB, test_split
 
     def _build_mscoco_data(self, max_vocab, un_train_size, train_size, valid_size, test_size):
         
         assert un_train_size >= train_size
         assert un_train_size <= self.configs.mscoco_train_max
         len_diff = un_train_size - train_size
+        lm_size = self.configs.mscoco_train_max
         
         train_valid_split = process_mscoco(self.configs.mscoco_fp_train, self.configs.use_spacy)
         test_split = process_mscoco(self.configs.mscoco_fp_test, self.configs.use_spacy)
@@ -463,6 +488,8 @@ class Trainer(object):
         calculate_bound(test_pred, test_split, True, True)
 
         train_valid_idx = shuffle(train_valid_idx, random_state=1234)
+        lm_idx = train_valid_idx[:lm_size]
+        lm_idx = shuffle(lm_idx, random_state=1234)
         un_train_idx = train_valid_idx[:un_train_size]
         un_train_idx = shuffle(un_train_idx, random_state=1234)
         train_idx = train_valid_idx[:train_size]
@@ -471,12 +498,13 @@ class Trainer(object):
 
         valid_idx = train_valid_idx[-valid_size:]
 
+        lm_dl = DataLoader(lm_idx, batch_size=self.configs.qu_batch_size, shuffle=True, collate_fn=self._batchify)
         un_dl = DataLoader(un_train_idx, batch_size=self.configs.ms_batch_size, shuffle=True, collate_fn=self._batchify)
         train_dl = DataLoader(train_idx, batch_size=self.configs.ms_batch_size, shuffle=True, collate_fn=self._batchify)
         valid_dl = DataLoader(valid_idx, batch_size=self.configs.ms_batch_size, shuffle=False, collate_fn=self._batchify)
         test_dl = DataLoader(test_idx, batch_size=self.configs.ms_batch_size, shuffle=False, collate_fn=self._batchify)
 
-        return un_dl, train_dl, valid_dl, test_dl, VOCAB, test_split
+        return lm_dl, un_dl, train_dl, valid_dl, test_dl, VOCAB, test_split
 
     def _train_lm(self, dataloader, optimizer, grad_clip):
         self.model.prior.train()
@@ -753,7 +781,7 @@ class Trainer(object):
         print(f'Epoch evaluateion time is: {elapsed}s.')
         return epoch_loss / len(dataloader)
 
-    def _train_semi(self, dataloader, optimizer, grad_clip, temperature=None, alpha=1, beta=1):
+    def _train_semi(self, dataloader, optimizer, grad_clip, temperature=None, alpha=0.5, beta=0.5):
         self.model.train()
         epoch_total_loss, epoch_seq2seq_loss, epoch_vae_loss, epoch_rec_loss, epoch_kl_loss = 0, 0, 0, 0, 0
         start_time = time.time()
@@ -846,7 +874,7 @@ class Trainer(object):
         print(f'Epoch training time is: {elapsed}s.')
         return epoch_total_loss / len(dataloader)
 
-    def _evaluate_semi(self, dataloader, temperature=None, alpha=1, beta=1):
+    def _evaluate_semi(self, dataloader, temperature=None, alpha=0.5, beta=0.5):
         self.model.eval()
         epoch_total_loss, epoch_seq2seq_loss, epoch_vae_loss, epoch_rec_loss, epoch_kl_loss = 0, 0, 0, 0, 0
         start_time = time.time()

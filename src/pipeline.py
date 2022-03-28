@@ -26,16 +26,24 @@ def index_to_token(index, vocab_object):
 def pseudo_tokenizer(string, use_spacy=True):
     return shuffle(tokenizer(string, use_spacy=True), random_state=1234)
 
-def remove_bos_eos(idx_list, bos_id, eos_id):
+def remove_bos_eos(idx_list, bos_id, eos_id, pad_id):
     clear_idx = []
     for idx in idx_list:
         if idx == eos_id:
-            return clear_idx
+            return remove_pad(clear_idx, pad_id)
         else:
             if idx == bos_id:
                 continue
             else:
                 clear_idx.append(idx)
     
-    return clear_idx
+    return remove_pad(clear_idx, pad_id)
 
+def remove_pad(idx_list, pad_id):
+    clear_idx = []
+    for idx in idx_list:
+        if idx == pad_id:
+            continue
+        else:
+            clear_idx.append(idx)
+    return clear_idx
