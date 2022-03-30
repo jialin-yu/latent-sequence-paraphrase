@@ -148,6 +148,7 @@ def normalise(train_and_valid, test, vocab, cutoff):
 
 bleu_metric = load_metric('bleu')
 rouge_metric = load_metric('rouge')
+bertscore_metric = load_metric("bertscore")
 
 def calculate_bound(pred_set, reference_set, bleu=False, rouge=False, inference=False):
     '''
@@ -197,3 +198,24 @@ def calculate_bound(pred_set, reference_set, bleu=False, rouge=False, inference=
             print(f'ROUGE-1 score is {rouge["rouge1"].mid.fmeasure}, ROUGE-2 score is {rouge["rouge2"].mid.fmeasure}, and ROUGE-L score is {rouge["rougeL"].mid.fmeasure}.')
             print(f'{"-"*20} Random selection lower bound {"-"*20}')
             print(f'ROUGE-1 score is {rouge_["rouge1"].mid.fmeasure}, ROUGE-2 score is {rouge_["rouge2"].mid.fmeasure}, and ROUGE-L score is {rouge_["rougeL"].mid.fmeasure}.')
+
+    a = True
+    if (a):
+
+        print(f'{"-"*20} Calculate BERT score {"-"*20}')
+        pred = [stringify(s) for s in pred_set]
+        refer = [stringify(s[1]) for s in reference_set]
+
+        bert = bertscore_metric.compute(predictions=pred, references=refer, lang="en")
+
+        pred = [stringify(s) for s in shuffle_pred_set]
+        
+        bert_ = bertscore_metric.compute(predictions=pred, references=refer, lang="en")
+        
+        if (inference):
+            print(f'BERT score precision is {bert["precision"]}, recall is {bert["recall"]}, and F1 is {bert["f1"]}.')
+        else:
+            print(f'{"-"*20} Ground truth upper bound {"-"*20}')
+            print(f'BERT score precision is {bert["precision"]}, recall is {bert["recall"]}, and F1 is {bert["f1"]}.')
+            print(f'{"-"*20} Random selection lower bound {"-"*20}')
+            print(f'BERT score precision is {bert_["precision"]}, recall is {bert_["recall"]}, and F1 is {bert_["f1"]}.')

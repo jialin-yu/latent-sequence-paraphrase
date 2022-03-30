@@ -26,7 +26,7 @@ def main():
     parser.add_argument(
         '-utrs', '--un_train_size', type=int, default=20000)
     parser.add_argument(
-        '-trs', '--train_size', type=int, default=10000)
+        '-trs', '--train_size', type=int, default=20000)
     
     parser.add_argument(
         '-lh', '--latent_hard', type=str2bool, default=False)
@@ -62,7 +62,7 @@ def main():
     parser.add_argument(
         '-seq2seqme', '--seq2seq_max_epoch', type=int, default=2)
     parser.add_argument(
-        '-seq2seqlr', '--seq2seq_lr', type=int, default=1e-5)
+        '-seq2seqlr', '--seq2seq_lr', type=float, default=1e-5)
     parser.add_argument(
         '-duo_train', '--duo', type=str2bool, default=True)
 
@@ -71,7 +71,7 @@ def main():
     parser.add_argument(
         '-semime', '--semi_max_epoch', type=int, default=15)
     parser.add_argument(
-        '-semilr', '--semi_lr', type=int, default=1e-4)
+        '-semilr', '--semi_lr', type=float, default=1e-4)
     
     
     
@@ -92,10 +92,10 @@ def main():
 
     configs = Configs(**vars(args))
     interface = Trainer(configs)
-    interface.main_lm()
+    # interface.main_lm()
     # interface.main_vae()
-    # interface.main_seq2seq()
-    interface.main_semi_supervised()
+    interface.main_seq2seq()
+    # interface.main_semi_supervised()
 
 
 if __name__ == "__main__":

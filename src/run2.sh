@@ -1,11 +1,2 @@
-python test.py --train_size=10000 --gumbel_max=True --fixed_temperature=True 
-python test.py --train_size=10000 --gumbel_max=True --fixed_temperature=False 
-
-python test.py --train_size=10000 --gumbel_max=True --fixed_temperature=True --latent_hard=False
-python test.py --train_size=10000 --gumbel_max=True --fixed_temperature=False --latent_hard=False
-
-python test.py --train_size=20000 --gumbel_max=True --fixed_temperature=True 
-python test.py --train_size=20000 --gumbel_max=True --fixed_temperature=False 
-
-python test.py --train_size=20000 --gumbel_max=True --fixed_temperature=True --latent_hard=False
-python test.py --train_size=20000 --gumbel_max=True --fixed_temperature=False --latent_hard=False
+python test.py --seed=1000 --un_train_size=20000 --train_size=20000 --seq2seq_lr=0.0001 --n_lays=3 --semi_max_epoch=2
+python test.py --seed=1000 --un_train_size=20000 --train_size=20000 --seq2seq_lr=0.0001 --n_lays=2 --semi_max_epoch=2

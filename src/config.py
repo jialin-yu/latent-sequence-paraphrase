@@ -20,7 +20,7 @@ class Configs(object):
         self.max_vocab = None
         
         self.quora_max_len = 20
-        self.quora_min_freq = 5
+        self.quora_min_freq = 1
         self.quora_train_max = 50000
         self.quora_valid = 3000
         self.quora_test = 20000
@@ -28,7 +28,7 @@ class Configs(object):
         
 
         self.mscoco_max_len = 20
-        self.mscoco_min_freq = 5
+        self.mscoco_min_freq = 1
         self.mscoco_train_max = 75000
         self.mscoco_valid = 5000
         self.mscoco_test = 40000

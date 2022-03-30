@@ -316,8 +316,11 @@ class Trainer(object):
         else:
             high_temp = 10
             low_temp = 0.01
-
-        alpha_factor = self.configs.train_size / (self.configs.un_train_size + self.configs.train_size)
+        if self.configs.un_train_size == self.configs.train_size:
+            # alpha_factor = self.configs.un_train_size / (self.configs.un_train_size + self.configs.train_size)
+            alpha_factor = 0.5
+        else:
+            alpha_factor = 0.9
         beta_factor = 0.5
         temperature = list(np.linspace(high_temp, low_temp, max_epoch))
 
@@ -336,7 +339,7 @@ class Trainer(object):
 
         print(f'Total model parameters {self._count_parameters(self.model)-self._count_parameters(self.model.prior)} ')
         print(f'Set high temperate as {high_temp} amd low temperature as {low_temp}')
-        print(f'Training with beta factor of {beta_factor} for VAE')
+        print(f'Training with beta factor of {beta_factor}: ratio of {beta_factor} for reconstruction and ratio of {1-beta_factor} for KL')
         print(f'Training with alpha factor of {alpha_factor}: ratio of {alpha_factor} for vae loss and ratio of {1-alpha_factor} for seq2seq loss')
         print(f'{"-"*40}')
 
