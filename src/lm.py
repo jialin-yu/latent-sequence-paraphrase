@@ -19,7 +19,7 @@ class LanguageModel(nn.Module):
         self.register_buffer('scale', torch.sqrt(torch.FloatTensor([configs.hid_dim])))
         self.linear = nn.Linear(configs.hid_dim, configs.vocab_size)
     
-    def foward(self, x_tok, x_m=None, x_pm=None):
+    def decode(self, x_tok, x_m=None, x_pm=None):
         '''
         INPUT: 
         x_tok (B, S-1, H); <bos> x

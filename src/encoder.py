@@ -6,8 +6,6 @@ class Encoder(nn.Module):
         super().__init__()
         
         self.device = configs.device
-        # self.tok_emb = nn.Embedding(configs.vocab_size, configs.hid_dim)
-        # self.pos_emb = nn.Embedding(configs.max_len, configs.hid_dim)
         encoder_layer = nn.TransformerEncoderLayer(d_model=configs.hid_dim, nhead=configs.n_heads, dropout=configs.dropout, batch_first=True)
         self.encoder = nn.TransformerEncoder(encoder_layer, num_layers=configs.n_lays)
         self.dropout = nn.Dropout(configs.dropout)

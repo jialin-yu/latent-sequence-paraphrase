@@ -48,14 +48,14 @@ def main():
     parser.add_argument(
         '-lmme', '--lm_max_epoch', type=int, default=15)
     parser.add_argument(
-        '-lmlr', '--lm_lr', type=int, default=1e-4)
+        '-lmlr', '--lm_lr', type=float, default=1e-4)
 
     parser.add_argument(
         '-vaedir', '--vae_dir', type=str, default='../model/vae/')
     parser.add_argument(
         '-vaeme', '--vae_max_epoch', type=int, default=15)
     parser.add_argument(
-        '-vaelr', '--vae_lr', type=int, default=1e-4)
+        '-vaelr', '--vae_lr', type=float, default=1e-4)
 
     parser.add_argument(
         '-seq2seqdir', '--seq2seq_dir', type=str, default='../model/seq2seq/')
@@ -78,7 +78,7 @@ def main():
     parser.add_argument(
         '-nl', '--n_lays', type=int, default=3)
     parser.add_argument(
-        '-dp', '--dropout', type=int, default=0.1)
+        '-dp', '--dropout', type=float, default=0.1)
 
     parser.add_argument(
         '-s', '--seed', type=int, default=1234)
@@ -88,10 +88,10 @@ def main():
 
     configs = Configs(**vars(args))
     interface = Trainer(configs)
-    # interface.main_lm()
+    interface.main_lm()
     # interface.main_vae()
-    interface.main_seq2seq()
-    # interface.main_semi_supervised()
+    # interface.main_seq2seq()
+    interface.main_semi_supervised()
 
 
 if __name__ == "__main__":

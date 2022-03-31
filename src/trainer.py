@@ -65,14 +65,14 @@ class Trainer(object):
         print(f'Set model as {self._count_parameters(self.model)} parameters')
         print(f'{"-"*40}')
     
-    def main_inference(self, dataloader, vocab, test_split, interpolate_latent=True):
+    def main_inference(self, dataloader, test_split, interpolate_latent=True):
         self.model.eval()
 
         print(f'{"-"*20} Perform inference {"-"*20}')
 
         pred_idx = []
-        first_n = 10
-        latent_samples = 5
+        first_n = 20
+        latent_samples = 10
         for idx, (src, trg, src_) in enumerate(tqdm(dataloader)):      
             trg_ = self.model.inference(self.model.src_encoder, self.model.trg_decoder, src, self.configs.max_len)
             for trg in trg_:
@@ -82,9 +82,9 @@ class Trainer(object):
             print(f'{"-"*20} Perform Latent Sampling {"-"*20}')
             latent_sample_idx = self._latent_interpolate(dataloader, first_n, latent_samples)
         
-        test_ = [index_to_token(remove_bos_eos(pred, self.configs.bos_id, self.configs.eos_id, self.configs.pad_id), vocab) for pred in pred_idx]
+        test_ = [index_to_token(remove_bos_eos(pred)) for pred in pred_idx]
         if interpolate_latent:
-            latent_sample_ = [[index_to_token(remove_bos_eos(s, self.configs.bos_id, self.configs.eos_id, self.configs.pad_id), vocab) for s in sets] for sets in latent_sample_idx]
+            latent_sample_ = [[index_to_token(remove_bos_eos(s)) for s in sets] for sets in latent_sample_idx]
         
         if interpolate_latent:
             table = wandb.Table(columns=['id', 'pred', 'ref', 'ls'])
@@ -133,6 +133,7 @@ class Trainer(object):
                         return latent_sample_idx
     
     def main_lm(self):
+        wandb.init(project='paraphrase-semi', config=self.configs, entity='du_jialin')
         model_dir = self.configs.lm_dir
         max_epoch = self.configs.lm_max_epoch
         lr = self.configs.lm_lr
@@ -148,10 +149,6 @@ class Trainer(object):
         print(f'Use gradient clip of {grad_clip}')
         print(f'Use seed of {seed}')
         print(f'Experiment id as {experiment_id}')
-        if use_pseudo:
-            print(f'LM train with psedo data.')
-        else:
-            print(f'LM train without psedo data.')
         print(f'Total model parameters {self._count_parameters(self.model.prior)}')
         print(f'{"-"*40}')
 
@@ -164,7 +161,9 @@ class Trainer(object):
         best_valid_loss = float('inf')
         for epoch in range(max_epoch):
             train_loss = self._train_lm(self.lm_data, optimizer, grad_clip)
+            wandb.log({'lm-train-loss': train_loss}, step=epoch+1)
             valid_loss = self._evaluate_lm(self.valid_data)
+            wandb.log({'lm-valid-loss': valid_loss}, step=epoch+1)
             print(f'{"-"*20} Epoch {epoch + 1}/{max_epoch} training done {"-"*20}')
             if valid_loss < best_valid_loss:
                 best_valid_loss = valid_loss 
@@ -229,7 +228,7 @@ class Trainer(object):
         print(f'Seq2seq experiment done in {time.time() - EXP_START}s.')
         print(f'{"-"*40}')
 
-        self.main_inference(self.test_data, self.vocab, self.test_split, interpolate_latent=False)
+        self.main_inference(self.test_data, self.test_split, interpolate_latent=False)
 
     def main_vae(self):
         lm_dir = self.configs.lm_dir
@@ -519,18 +518,11 @@ class Trainer(object):
         start_time = time.time()
         
         log_inter = len(dataloader) // 5
-        for idx, (src, trg, src_) in enumerate(tqdm(dataloader)):
+        for idx, (src, trg) in enumerate(tqdm(dataloader)):
             optimizer.zero_grad()          
-                
-            if self.configs.use_pseudo:
-
-                output = self.model.decode_lm(self.model.prior, src_[:, :-1], True)         
-                loss = self.model._reconstruction_loss(output, src_[:, 1:])
-
-            else:
                     
-                output = self.model.decode_lm(self.model.prior, src[:, :-1], True)         
-                loss = self.model._reconstruction_loss(output, src[:, 1:])
+            output = self.model.decode_lm(self.model.prior, src[:, :-1])         
+            loss = self.model._reconstruction_loss(output, src[:, 1:])
 
             
             loss = torch.mean(loss)
@@ -550,17 +542,12 @@ class Trainer(object):
         self.model.prior.eval()
         epoch_loss = 0
         start_time = time.time()
-        for idx, (src, trg, src_) in enumerate(tqdm(dataloader)):
+        for idx, (src, trg) in enumerate(tqdm(dataloader)):
             
-            if self.configs.use_pseudo:
 
-                output = self.model.decode_lm(self.model.prior, src_[:, :-1], True)         
-                loss = self.model._reconstruction_loss(output, src_[:, 1:])
 
-            else:
-
-                output = self.model.decode_lm(self.model.prior, src[:, :-1], True)         
-                loss = self.model._reconstruction_loss(output, src[:, 1:])
+            output = self.model.decode_lm(self.model.prior, src[:, :-1])         
+            loss = self.model._reconstruction_loss(output, src[:, 1:])
                 
             batch_loss = torch.mean(loss)
             epoch_loss += batch_loss.item()
@@ -716,14 +703,13 @@ class Trainer(object):
         self.model.train()
         epoch_loss = 0
         start_time = time.time()
-        
-        log_inter = len(dataloader) // 5
+
+        log_inter = len(dataloader) // 3
         for idx, (src, trg) in enumerate(tqdm(dataloader)):
             optimizer.zero_grad()
-
+            
             src_ = self.model.encode_and_decode(self.model.trg_encoder, self.model.src_decoder,
                 trg, src[:,:-1])
-            
             trg_ = self.model.encode_and_decode(self.model.src_encoder, self.model.trg_decoder,
                 src, trg[:,:-1])
 
@@ -756,16 +742,16 @@ class Trainer(object):
         print(f'Epoch training time is: {elapsed}s.')
         return epoch_loss / len(dataloader)
 
+
     def _evaluate_seq2seq(self, dataloader, duo=True):
         self.model.eval()
         epoch_loss = 0
         start_time = time.time()
         
-        log_inter = len(dataloader) // 5
         for idx, (src, trg) in enumerate(tqdm(dataloader)):
+            
             src_ = self.model.encode_and_decode(self.model.trg_encoder, self.model.src_decoder,
                 trg, src[:,:-1])
-            
             trg_ = self.model.encode_and_decode(self.model.src_encoder, self.model.trg_decoder,
                 src, trg[:,:-1])
 
@@ -797,13 +783,10 @@ class Trainer(object):
         for idx, (src, trg) in enumerate(tqdm(dataloader)):
             optimizer.zero_grad()
 
-            
-
             # trg_ (B, S, V)
             trg_, trg_logit = self.model.encode_sample_decode(self.model.src_encoder, self.model.trg_decoder, 
                         src, self.configs.latent_hard, self.configs.gumbel_max, temperature) 
-            
-            
+
             # src__ (B, S-1, V)
             src__ = self.model.encode_and_decode(self.model.trg_encoder, self.model.src_decoder,
                 trg_, src[:,:-1], False)
@@ -813,8 +796,7 @@ class Trainer(object):
             # calculate reconstruction loss between src and src__
                 
             if self.configs.use_pretrain_lm:
-                
-                    
+
                 p_trg = self.model.decode_lm(self.model.prior, src[:, :-1], True)
                 p_trg = F.softmax(p_trg, dim=2)
 
@@ -870,15 +852,12 @@ class Trainer(object):
         epoch_total_loss, epoch_seq2seq_loss, epoch_vae_loss, epoch_rec_loss, epoch_kl_loss = 0, 0, 0, 0, 0
         start_time = time.time()
         
-        log_inter = len(dataloader) // 5
         for idx, (src, trg, src_) in enumerate(tqdm(dataloader)):
-
 
             # trg_ (B, S, V)
             trg_, trg_logit = self.model.encode_sample_decode(self.model.src_encoder, self.model.trg_decoder, 
                         src, src_, self.configs.latent_hard, self.configs.gumbel_max, temperature) 
             
-        
             # src__ (B, S-1, V)
             src__ = self.model.encode_and_decode(self.model.trg_encoder, self.model.src_decoder,
                 trg_, src[:,:-1], False)
@@ -888,16 +867,11 @@ class Trainer(object):
             # calculate reconstruction loss between src and src__
                 
             if self.configs.use_pretrain_lm:
-                
-                
-
                     
                 p_trg = self.model.decode_lm(self.model.prior, src[:, :-1], True)
                 p_trg = F.softmax(p_trg, dim=2)
 
             else:
-
-
                     
                 p_trg = F.one_hot(src[:, 1:], self.configs.vocab_size).double()
 
