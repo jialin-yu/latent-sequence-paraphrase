@@ -1,3 +1,4 @@
+from distutils.command.config import config
 import imp
 import torch
 import torch.nn as nn
@@ -5,6 +6,11 @@ import torch.nn.functional as F
 
 from encoder import Encoder
 from decoder import Decoder
+from pos_emb import PosEmbedding
+from tok_emb import TokEmbedding
+
+from transformers import BertModel
+
 from lm import LanguageModel
 
 from sample import straight_through_softmax, gumbel_softmax, gumbel_softmax_sample, straight_through_logits
@@ -16,10 +22,13 @@ class Transformer(nn.Module):
         super(Transformer, self).__init__()
 
         self.device = 'cuda' if configs.cuda==True else 'cpu'
-        
-        self.bos_id = configs.bos_id
+
         self.pad_id = configs.pad_id
         self.vocab_size = configs.vocab_size
+
+        with torch.no_grad():
+            self.bert = BertModel.from_pretrained('bert-base-uncased').to(self.device)
+            self.bert.eval()
         
         self.prior = LanguageModel(configs)
 
@@ -28,9 +37,14 @@ class Transformer(nn.Module):
         
         self.trg_encoder = Encoder(configs)
         self.src_decoder = Decoder(configs)
+
+        self.pos_emb = PosEmbedding(configs)
         
         # the loss should return in per batch
         self.loss = nn.CrossEntropyLoss(ignore_index=self.pad_id, reduction="none")
+
+    def _get_emb(self, x):
+        return self.bert(x)['last_hidden_state']
 
     def _get_causal_mask(self, src, trg):
         '''
@@ -80,32 +94,21 @@ class Transformer(nn.Module):
 
         return src_pm, trg_pm
 
-    def decode_lm(self, lm_model, src, src_hard=False):
+    def decode_lm(self, lm_model, src):
         '''
-        Decode src in lm_model
-
         INPUT:
-
-        src (B, S-1) if hard == True; <bos> x
-        src (B, S-1, V) if hard == False; <bos> x 
-
-
+        src (B, S-1); <bos> x
+        src_emb (B, S-1, H); <bos> x
         RETURN:
         output (B, S-1, V) x_ <eos>
         '''
-        if src_hard:
-            src_m, _, _ = self._get_causal_mask(src, src)
-            src_pm, _ = self._get_padding_mask(src, src)
-            output = lm_model.decode(src, src_m, src_pm, True)
-        else:
-            hard_src = torch.argmax(src, dim=2)
-            src_m, _, _ = self._get_causal_mask(hard_src, hard_src)
-            src_pm, _ = self._get_padding_mask(hard_src, hard_src)
-            output = lm_model.decode(src, src_m, src_pm, False)
-        
+        src_m, _, _ = self._get_causal_mask(src, src)
+        src_pm, _ = self._get_padding_mask(src, src)
+        src_emb = self._get_emb(src)
+        output = lm_model(src_emb, src_m, src_pm)
         return output
 
-    def encode_sample_decode(self, encoder, decoder, src, trg, latent_hard=False, gumbel_max=False, temperature=None):
+    def encode_sample_decode(self, encoder, decoder, src, gumbel_max=False, temperature=None):
         '''
         Encode and decode for latent variable 
 
@@ -121,8 +124,8 @@ class Transformer(nn.Module):
         if gumbel_max, temperature is required
         
         INPUT:
-        src (B, S) <bos> x <eos>
-        trg (B, T) <bos> y <eos>
+        src (B, S); <bos> x <eos>
+        src_emb (B, S); <bos> x <eos>
 
         RETURN: 
         trg_ (B, T, V) <bos> y_ <eos>
@@ -131,7 +134,8 @@ class Transformer(nn.Module):
         _, T = src.size()
         
         src_pm, _ = self._get_padding_mask(src, src)
-        enc_src = encoder.encode(src, None, src_pm, True)
+        # enc_src = encoder.encode(src, None, src_pm, True)
+        enc_src = encoder.encode(self.pos_emb(self._get_emb(src)), None, src_pm, True)
         dec_temp= F.one_hot(src, self.vocab_size)[:, 0].unsqueeze(1).double().detach() # B, 1, V
 
         for i in range(T-1):
@@ -140,27 +144,17 @@ class Transformer(nn.Module):
             _, trg_m, trg_src_m = self._get_causal_mask(src, hard_trg)
             _, trg_pm = self._get_padding_mask(src, hard_trg)
 
-            if latent_hard:
-
-                dec_out = decoder.decode(hard_trg, enc_src, trg_m, trg_src_m, trg_pm, src_pm, True)
+            
+            hard_trg = self.pos_emb(self._get_emb(dec_temp))
+            dec_out = decoder.decode(hard_trg, enc_src, trg_m, trg_src_m, trg_pm, src_pm)
                 
-                if gumbel_max:
-                    trg_new = gumbel_softmax(dec_out, temperature)[:, -1].unsqueeze(1)
-                    dec_temp = torch.cat((dec_temp, trg_new), dim=1).detach()
-                else:
-                    trg_new = straight_through_softmax(dec_out)[:, -1].unsqueeze(1) 
-                    dec_temp = torch.cat((dec_temp, trg_new), dim=1).detach()
+            if gumbel_max:
+                trg_new = gumbel_softmax(dec_out, temperature)[:, -1].unsqueeze(1)
+                dec_temp = torch.cat((dec_temp, trg_new), dim=1).detach()
             else:
-
-                dec_out = decoder.decode(dec_temp, enc_src, trg_m, trg_src_m, trg_pm, src_pm, False)
-                
-                if gumbel_max:
-                    trg_new = gumbel_softmax_sample(dec_out, temperature)[:, -1].unsqueeze(1) 
-                    dec_temp = torch.cat((dec_temp, trg_new), dim=1).detach()
-                else:
-                    trg_new = F.softmax(dec_out, dim=-1)[:, -1].unsqueeze(1)
-                    dec_temp = torch.cat((dec_temp, trg_new), dim=1).detach()
-        
+                trg_new = straight_through_softmax(dec_out)[:, -1].unsqueeze(1) 
+                dec_temp = torch.cat((dec_temp, trg_new), dim=1).detach()
+            
         # dec_temp should have size (B, T, V)
         # print(dec_temp.size()[:-1])
         # print(trg.size())
@@ -168,26 +162,21 @@ class Transformer(nn.Module):
         # out = torch.cat((dec_temp, dec_out), dim=1)
         return dec_temp, dec_out
     
-    def encode_and_decode(self, encoder, decoder, src, trg, src_hard=True):
+    def encode_and_decode(self, encoder, decoder, src, trg):
         '''
         INPUT:
-        src (B, S) if encode_hard == Ture; <bos> x <eos>
-        src (B, S, V) if encode_hard == False; <bos> x <eos>
+        src (B, S) i; <bos> x <eos>
         trg (B, T-1) <bos> y
 
         Return: (B, T-1, V) y_ <eos>
         '''
-        if src_hard:
-            src_pm, trg_pm = self._get_padding_mask(src, trg)
-            _, trg_m, trg_src_m = self._get_causal_mask(src, trg)
-            enc_src = encoder.encode(src, None, src_pm, True)
-            dec_out = decoder.decode(trg, enc_src, trg_m, trg_src_m, trg_pm, src_pm, True)
-        else:
-            src_hard_form = torch.argmax(src, dim=2)
-            src_pm, trg_pm = self._get_padding_mask(src_hard_form, trg)
-            _, trg_m, trg_src_m = self._get_causal_mask(src_hard_form, trg)
-            enc_src = encoder.encode(src, None, src_pm, False)
-            dec_out = decoder.decode(trg, enc_src, trg_m, trg_src_m, trg_pm, src_pm, True)
+
+        src_pm, trg_pm = self._get_padding_mask(src, trg)
+        _, trg_m, trg_src_m = self._get_causal_mask(src, trg)
+        src_emb = self.pos_emb(self._get_emb(src))
+        enc_src = encoder.encode(src_emb, None, src_pm, True)
+        trg_emb = self.pos_emb(self._get_emb(trg))
+        dec_out = decoder.decode(trg_emb, enc_src, trg_m, trg_src_m, trg_pm, src_pm)
         
         return dec_out
 
@@ -201,7 +190,8 @@ class Transformer(nn.Module):
         '''
         
         src_pm, _ = self._get_padding_mask(src, src)
-        enc_src = encoder.encode(src, None, src_pm, True)
+        src_emb = self.pos_emb(self._get_emb(src))
+        enc_src = encoder.encode(src_emb, None, src_pm, True)
         dec_temp= src[:, 0].unsqueeze(1) # B, 1
 
         for i in range(max_len-1):
@@ -209,7 +199,8 @@ class Transformer(nn.Module):
             _, trg_m, trg_src_m = self._get_causal_mask(src, dec_temp)
             _, trg_pm = self._get_padding_mask(src, dec_temp)
 
-            dec_out = decoder.decode(dec_temp, enc_src, trg_m, trg_src_m, trg_pm, src_pm, True)
+            dec_temp_emb = self.pos_emb(self._get_emb(dec_temp))
+            dec_out = decoder.decode(dec_temp_emb, enc_src, trg_m, trg_src_m, trg_pm, src_pm)
             dec_out_ = torch.argmax(dec_out, dim=2)[:, -1].unsqueeze(1)
             dec_temp = torch.cat((dec_temp, dec_out_), dim=1)
         

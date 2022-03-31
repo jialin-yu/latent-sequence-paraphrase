@@ -13,9 +13,11 @@ import os
 from transformer import Transformer
 from sample import straight_through_softmax
 
-from pipeline import index_to_token, remove_bos_eos, stringify
+from pipeline import index_to_token, remove_bos_eos, stringify, bert_tokenizer
 from sklearn.utils import shuffle, resample
 import wandb
+
+from transformers import BertModel, BertConfig, BertTokenizer
 
 
 class Trainer(object):
@@ -25,15 +27,19 @@ class Trainer(object):
         self.configs = configs
         self.configs.device = 'cuda' if torch.cuda.is_available() else 'cpu'
         self.device = self.configs.device
-        
+        self.tokenizer = bert_tokenizer
+        self.bos_id = self.tokenizer.bos_token_id
+        self.eos_id = self.tokenizer.eos_token_id
+        self.pad_id = self.tokenizer.pad_token_id
+
         assert self.configs.data in ['quora', 'mscoco']
         
         if self.configs.data == 'quora':
-            lm_data, un_data, train_data, valid_data, test_data, vocab, test_split = self._build_quora_data(self.configs.max_vocab,
-                self.configs.un_train_size, self.configs.train_size, self.configs.quora_valid, self.configs.quora_test)
+            lm_data, un_data, train_data, valid_data, test_data, test_split = self._build_quora_data(self.configs.un_train_size, 
+            self.configs.train_size, self.configs.quora_valid, self.configs.quora_test)
         if self.configs.data == 'mscoco':
-            lm_data, un_data, train_data, valid_data, test_data, vocab, test_split = self._build_mscoco_data(self.configs.max_vocab,
-                self.configs.un_train_size, self.configs.train_size, self.configs.mscoco_valid, self.configs.mscoco_test)
+            lm_data, un_data, train_data, valid_data, test_data, test_split = self._build_mscoco_data(self.configs.un_train_size,
+            self.configs.train_size, self.configs.mscoco_valid, self.configs.mscoco_test)
         
         self.lm_data = lm_data
         self.un_data = un_data
@@ -42,8 +48,9 @@ class Trainer(object):
         self.test_data = test_data
         self.test_split = test_split
 
-        self.vocab = vocab
-        self.configs.vocab_size = len(self.vocab)
+        self.configs.vocab_size = self.tokenizer.vocab_size
+        self.configs.pad_id = self.pad_id
+
         print(f'{"-"*20} {self.configs.data} Data Description {"-"*20}') 
         if self.configs.data == 'quora':
             print(f'Use {self.configs.un_train_size} unsupervised data; {self.configs.train_size} training data; {self.configs.quora_valid} validation data and {self.configs.quora_test} testing data.')
@@ -54,6 +61,7 @@ class Trainer(object):
         self.model = Transformer(self.configs)
         self.model.to(self.device)
         print(f'{"-"*20} Model Description {"-"*20}')
+        print(f'Initialise embedding use bert with {self._count_parameters(self.model.bert)} parameters')
         print(f'Set model as {self._count_parameters(self.model)} parameters')
         print(f'{"-"*40}')
     
@@ -414,20 +422,18 @@ class Trainer(object):
         print(f'Enhance experiment done .')
 
     def _batchify(self, batch):
-        src_list, trg_list, src_list_ = [], [], []
+        
+        src_list, trg_list = [], []
         for sets in batch:
-            src = torch.tensor([self.configs.bos_id] + sets[0] + [self.configs.eos_id], dtype=torch.int64)
-            trg = torch.tensor([self.configs.bos_id] + sets[1] + [self.configs.eos_id], dtype=torch.int64)
-            src_ = torch.tensor([self.configs.bos_id] + sets[-1] + [self.configs.eos_id], dtype=torch.int64)
+            src = torch.tensor([self.bos_id] + sets[0] + [self.eos_id], dtype=torch.int64)
+            trg = torch.tensor([self.bos_id] + sets[1] + [self.eos_id], dtype=torch.int64)
             src_list.append(src)
             trg_list.append(trg)
-            src_list_.append(src_)
-        src_ = pad_sequence(src_list, batch_first=True, padding_value=self.configs.pad_id)
-        trg_ = pad_sequence(trg_list, batch_first=True, padding_value=self.configs.pad_id)
-        src__ = pad_sequence(src_list_, batch_first=True, padding_value=self.configs.pad_id)
-        return src_.to(self.device), trg_.to(self.device), src__.to(self.device)
+        src_ = pad_sequence(src_list, batch_first=True, padding_value=self.pad_id)
+        trg_ = pad_sequence(trg_list, batch_first=True, padding_value=self.pad_id)
+        return src_.to(self.device), trg_.to(self.device)
 
-    def _build_quora_data(self, max_vocab, un_train_size, train_size, valid_size, test_size):
+    def _build_quora_data(self, un_train_size, train_size, valid_size, test_size):
         
         assert un_train_size >= train_size
         assert un_train_size <= self.configs.quora_train_max
@@ -439,9 +445,7 @@ class Trainer(object):
         train_valid_split, test_split = sentence_pairs[:-test_size], sentence_pairs[-test_size:]
         print(f'Calculate origional stats.')
         calculate_stats(train_valid_split)
-        VOCAB_ = create_vocab(sentence_pairs, self.configs.quora_min_freq, max_vocab)
-        VOCAB = append_special_tokens(VOCAB_, self.configs.special_token, self.configs.unk_id)
-        train_valid_idx, test_idx = normalise(train_valid_split, test_split, VOCAB, self.configs.quora_max_len)
+        train_valid_idx, test_idx = normalise(train_valid_split, test_split, self.configs.quora_max_len)
         print(f'Calculate normalised stats.')
         calculate_stats(train_valid_idx)
         print('Calculate bound for test data')
@@ -465,9 +469,9 @@ class Trainer(object):
         valid_dl = DataLoader(valid_idx, batch_size=self.configs.qu_batch_size, shuffle=False, collate_fn=self._batchify)
         test_dl = DataLoader(test_idx, batch_size=self.configs.qu_batch_size, shuffle=False, collate_fn=self._batchify)
 
-        return lm_dl, un_dl, train_dl, valid_dl, test_dl, VOCAB, test_split
+        return lm_dl, un_dl, train_dl, valid_dl, test_dl, test_split
 
-    def _build_mscoco_data(self, max_vocab, un_train_size, train_size, valid_size, test_size):
+    def _build_mscoco_data(self, un_train_size, train_size, valid_size, test_size):
         
         assert un_train_size >= train_size
         assert un_train_size <= self.configs.mscoco_train_max
@@ -714,14 +718,14 @@ class Trainer(object):
         start_time = time.time()
         
         log_inter = len(dataloader) // 5
-        for idx, (src, trg, src_) in enumerate(tqdm(dataloader)):
+        for idx, (src, trg) in enumerate(tqdm(dataloader)):
             optimizer.zero_grad()
 
             src_ = self.model.encode_and_decode(self.model.trg_encoder, self.model.src_decoder,
-                trg, src[:,:-1], True)
+                trg, src[:,:-1])
             
             trg_ = self.model.encode_and_decode(self.model.src_encoder, self.model.trg_decoder,
-                src, trg[:,:-1], True)
+                src, trg[:,:-1])
 
             loss_src = self.model._reconstruction_loss(src_, src[:, 1:])
             loss_trg = self.model._reconstruction_loss(trg_, trg[:, 1:])
@@ -758,12 +762,12 @@ class Trainer(object):
         start_time = time.time()
         
         log_inter = len(dataloader) // 5
-        for idx, (src, trg, src_) in enumerate(tqdm(dataloader)):
+        for idx, (src, trg) in enumerate(tqdm(dataloader)):
             src_ = self.model.encode_and_decode(self.model.trg_encoder, self.model.src_decoder,
-                trg, src[:,:-1], True)
+                trg, src[:,:-1])
             
             trg_ = self.model.encode_and_decode(self.model.src_encoder, self.model.trg_decoder,
-                src, trg[:,:-1], True)
+                src, trg[:,:-1])
 
             loss_src = self.model._reconstruction_loss(src_, src[:, 1:])
             loss_trg = self.model._reconstruction_loss(trg_, trg[:, 1:])
@@ -790,19 +794,15 @@ class Trainer(object):
         start_time = time.time()
         
         log_inter = len(dataloader) // 5
-        for idx, (src, trg, src_) in enumerate(tqdm(dataloader)):
+        for idx, (src, trg) in enumerate(tqdm(dataloader)):
             optimizer.zero_grad()
 
-            if self.configs.use_pseudo:
-
-                # trg_ (B, S, V)
-                trg_, trg_logit = self.model.encode_sample_decode(self.model.src_encoder, self.model.trg_decoder, 
-                        src, src_, self.configs.latent_hard, self.configs.gumbel_max, temperature) 
             
-            else:
 
-                trg_, trg_logit = self.model.encode_sample_decode(self.model.src_encoder, self.model.trg_decoder, 
-                        src, src, self.configs.latent_hard, self.configs.gumbel_max, temperature)
+            # trg_ (B, S, V)
+            trg_, trg_logit = self.model.encode_sample_decode(self.model.src_encoder, self.model.trg_decoder, 
+                        src, self.configs.latent_hard, self.configs.gumbel_max, temperature) 
+            
             
             # src__ (B, S-1, V)
             src__ = self.model.encode_and_decode(self.model.trg_encoder, self.model.src_decoder,
@@ -814,25 +814,13 @@ class Trainer(object):
                 
             if self.configs.use_pretrain_lm:
                 
-                if self.configs.use_pseudo:
-
-                    p_trg = self.model.decode_lm(self.model.prior, src_[:, :-1], True)
-                    p_trg = F.softmax(p_trg, dim=2)
                     
-                else:
-                    
-                    p_trg = self.model.decode_lm(self.model.prior, src[:, :-1], True)
-                    p_trg = F.softmax(p_trg, dim=2)
+                p_trg = self.model.decode_lm(self.model.prior, src[:, :-1], True)
+                p_trg = F.softmax(p_trg, dim=2)
 
             else:
 
-                if self.configs.use_pseudo:
-
-                    p_trg = F.one_hot(src_[:, 1:], self.configs.vocab_size).double()
-                    
-                else:
-                    
-                    p_trg = F.one_hot(src[:, 1:], self.configs.vocab_size).double()
+                p_trg = F.one_hot(src[:, 1:], self.configs.vocab_size).double()
 
             q_trg = trg_logit
             
@@ -885,17 +873,12 @@ class Trainer(object):
         log_inter = len(dataloader) // 5
         for idx, (src, trg, src_) in enumerate(tqdm(dataloader)):
 
-            if self.configs.use_pseudo:
 
-                # trg_ (B, S, V)
-                trg_, trg_logit = self.model.encode_sample_decode(self.model.src_encoder, self.model.trg_decoder, 
+            # trg_ (B, S, V)
+            trg_, trg_logit = self.model.encode_sample_decode(self.model.src_encoder, self.model.trg_decoder, 
                         src, src_, self.configs.latent_hard, self.configs.gumbel_max, temperature) 
             
-            else:
-
-                trg_, trg_logit = self.model.encode_sample_decode(self.model.src_encoder, self.model.trg_decoder, 
-                        src, src, self.configs.latent_hard, self.configs.gumbel_max, temperature)
-            
+        
             # src__ (B, S-1, V)
             src__ = self.model.encode_and_decode(self.model.trg_encoder, self.model.src_decoder,
                 trg_, src[:,:-1], False)
@@ -906,25 +889,17 @@ class Trainer(object):
                 
             if self.configs.use_pretrain_lm:
                 
-                if self.configs.use_pseudo:
+                
 
-                    p_trg = self.model.decode_lm(self.model.prior, src_[:, :-1], True)
-                    p_trg = F.softmax(p_trg, dim=2)
                     
-                else:
-                    
-                    p_trg = self.model.decode_lm(self.model.prior, src[:, :-1], True)
-                    p_trg = F.softmax(p_trg, dim=2)
+                p_trg = self.model.decode_lm(self.model.prior, src[:, :-1], True)
+                p_trg = F.softmax(p_trg, dim=2)
 
             else:
 
-                if self.configs.use_pseudo:
 
-                    p_trg = F.one_hot(src_[:, 1:], self.configs.vocab_size).double()
                     
-                else:
-                    
-                    p_trg = F.one_hot(src[:, 1:], self.configs.vocab_size).double()
+                p_trg = F.one_hot(src[:, 1:], self.configs.vocab_size).double()
 
             q_trg = trg_logit
             

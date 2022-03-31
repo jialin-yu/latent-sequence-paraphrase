@@ -22,7 +22,7 @@ def main():
     
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        '-d', '--data', type=str, default='mscoco')
+        '-d', '--data', type=str, default='quora')
     parser.add_argument(
         '-utrs', '--un_train_size', type=int, default=20000)
     parser.add_argument(
@@ -60,11 +60,11 @@ def main():
     parser.add_argument(
         '-seq2seqdir', '--seq2seq_dir', type=str, default='../model/seq2seq/')
     parser.add_argument(
-        '-seq2seqme', '--seq2seq_max_epoch', type=int, default=2)
+        '-seq2seqme', '--seq2seq_max_epoch', type=int, default=10)
     parser.add_argument(
-        '-seq2seqlr', '--seq2seq_lr', type=float, default=1e-5)
+        '-seq2seqlr', '--seq2seq_lr', type=float, default=1e-4)
     parser.add_argument(
-        '-duo_train', '--duo', type=str2bool, default=True)
+        '-duo_train', '--duo', type=str2bool, default=False)
 
     parser.add_argument(
         '-semidir', '--semi_dir', type=str, default='../model/semi/')

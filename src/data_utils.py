@@ -11,9 +11,11 @@ BY Jialin Yu
 
 import json
 import random
+from weakref import ref
 from datasets import load_metric
+from git import reference
 import numpy as np
-from pipeline import tokenizer, token_to_index, stringify, pseudo_tokenizer
+from pipeline import tokenizer, token_to_index, stringify
 from tqdm import tqdm
 
 from torchtext.vocab import vocab
@@ -26,7 +28,7 @@ from sklearn.utils import shuffle
 #################################################
 
 
-def process_quora(file_path_read, use_spacy=True):   
+def process_quora(file_path_read):   
     print(f'Read quora data from path: {file_path_read}...')
     
     with open(file_path_read, 'r') as f:
@@ -38,12 +40,12 @@ def process_quora(file_path_read, use_spacy=True):
             continue
         q1, q2, is_duplicate = l.split('\t')[3:]         
         if int(is_duplicate) == 1:
-            sentence_pairs.append((tokenizer(q1, use_spacy), tokenizer(q2, use_spacy), pseudo_tokenizer(q1, use_spacy)))
+            sentence_pairs.append((tokenizer(q1), tokenizer(q2)))
 
     print(f'Read {len(sentence_pairs)} pairs from original {len(lines)} pairs.')
     return sentence_pairs  
 
-def process_mscoco(file_path_read, use_spacy=True):   
+def process_mscoco(file_path_read):   
     print(f'Read mscoco data from path: {file_path_read}...')
     
     with open(file_path_read, 'r') as f:
@@ -66,7 +68,7 @@ def process_mscoco(file_path_read, use_spacy=True):
             continue
         l = shuffle(l, random_state=1234)
         q1, q2, q3, q4, q5 = l
-        sentence_pairs.append((tokenizer(q1, use_spacy), tokenizer(q2, use_spacy),tokenizer(q3, use_spacy), tokenizer(q4, use_spacy),tokenizer(q5, use_spacy), pseudo_tokenizer(q1, use_spacy)))    
+        sentence_pairs.append((tokenizer(q1), tokenizer(q2),tokenizer(q3), tokenizer(q4),tokenizer(q5)))    
 
     print(f'Read {len(sentence_pairs)} pairs from original {len(sentence_sets)} sets.')
     return sentence_pairs
@@ -129,16 +131,16 @@ def append_special_tokens(vocab_object, sp_tokens, unk_id):
 ################   Normalise Data   #############
 #################################################
 
-def normalise(train_and_valid, test, vocab, cutoff):
+def normalise(train_and_valid, test, cutoff):
     print(f'Normalising data...')
 
     tr_v_temp = []
     t_temp = []
 
     for sets in tqdm(train_and_valid): 
-        tr_v_temp.append((token_to_index(sets[0][:cutoff], vocab), token_to_index(sets[1][:cutoff], vocab), token_to_index(sets[-1][:cutoff], vocab)))
+        tr_v_temp.append((token_to_index(sets[0][:cutoff]), token_to_index(sets[1][:cutoff])))
     for sets in tqdm(test):  
-        t_temp.append((token_to_index(sets[0][:cutoff], vocab), token_to_index(sets[1][:cutoff], vocab), token_to_index(sets[-1][:cutoff], vocab)))
+        t_temp.append((token_to_index(sets[0][:cutoff]), token_to_index(sets[1][:cutoff])))
     
     return tr_v_temp, t_temp
 
@@ -147,6 +149,7 @@ def normalise(train_and_valid, test, vocab, cutoff):
 #################################################
 
 bleu_metric = load_metric('bleu')
+# from nltk.translate.bleu_score import corpus_bleu
 rouge_metric = load_metric('rouge')
 bertscore_metric = load_metric("bertscore")
 
@@ -163,14 +166,19 @@ def calculate_bound(pred_set, reference_set, bleu=False, rouge=False, inference=
 
         print(f'{"-"*20} Calculate BLEU score {"-"*20}')
         pred = pred_set
-        refer = [[s_ for s_ in s[1:-1]] for s in reference_set]
+        # pre = [[s] for s in pred_set]
+        refer = [[s_ for s_ in s[1:]] for s in reference_set]
+        # refer = [[s[1:-1]] for s in reference_set]
 
         bleu = bleu_metric.compute(predictions=pred, references=refer)
+        # nltk_blue = corpus_bleu(list_of_references=refer, hypotheses=pred)
 
         pred = shuffle_pred_set
 
         bleu_ = bleu_metric.compute(predictions=pred, references=refer)
         
+        # print(f'bleu on the training set: {nltk_blue}')
+
         if (inference):
             print(f'BLEU score is {bleu["bleu"]} and precisions are {bleu["precisions"]}.')
         else:
@@ -199,7 +207,7 @@ def calculate_bound(pred_set, reference_set, bleu=False, rouge=False, inference=
             print(f'{"-"*20} Random selection lower bound {"-"*20}')
             print(f'ROUGE-1 score is {rouge_["rouge1"].mid.fmeasure}, ROUGE-2 score is {rouge_["rouge2"].mid.fmeasure}, and ROUGE-L score is {rouge_["rougeL"].mid.fmeasure}.')
 
-    a = True
+    a = False
     if (a):
 
         print(f'{"-"*20} Calculate BERT score {"-"*20}')
@@ -213,9 +221,10 @@ def calculate_bound(pred_set, reference_set, bleu=False, rouge=False, inference=
         bert_ = bertscore_metric.compute(predictions=pred, references=refer, lang="en")
         
         if (inference):
-            print(f'BERT score precision is {bert["precision"]}, recall is {bert["recall"]}, and F1 is {bert["f1"]}.')
+            print(f'BERT score precision is {np.mean(np.array(bert["precision"]))}, recall is {np.mean(np.array(bert["recall"]))}, and F1 is {np.mean(np.array(bert["f1"]))}.')
         else:
             print(f'{"-"*20} Ground truth upper bound {"-"*20}')
-            print(f'BERT score precision is {bert["precision"]}, recall is {bert["recall"]}, and F1 is {bert["f1"]}.')
+            print(len(bert["precision"]))
+            print(f'BERT score precision is {np.mean(np.array(bert["precision"]))}, recall is {np.mean(np.array(bert["recall"]))}, and F1 is {np.mean(np.array(bert["f1"]))}.')
             print(f'{"-"*20} Random selection lower bound {"-"*20}')
-            print(f'BERT score precision is {bert_["precision"]}, recall is {bert_["recall"]}, and F1 is {bert_["f1"]}.')
+            print(f'BERT score precision is {np.mean(np.array(bert_["precision"]))}, recall is {np.mean(np.array(bert_["recall"]))}, and F1 is {np.mean(np.array(bert_["f1"]))}.')

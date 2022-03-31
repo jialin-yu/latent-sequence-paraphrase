@@ -1,48 +1,40 @@
-from nltk.tokenize import word_tokenize
-import spacy
-import random
-from sklearn.utils import shuffle
+from transformers import BertTokenizer
 
-spacy_pipeline = spacy.load('en_core_web_sm')
+bert_tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+# set bos and eos token as cls and sep
+bert_tokenizer.bos_token = bert_tokenizer.cls_token
+bert_tokenizer.eos_token = bert_tokenizer.sep_token
 
 
-
-def tokenizer(string, use_spacy=True):
-    string_ = string.strip()
-    if use_spacy:
-        return [token.text for token in spacy_pipeline.tokenizer(string_.lower())]
-    else:
-        return word_tokenize(string_.lower())
+def tokenizer(string):
+    return bert_tokenizer.tokenize(string)
 
 def stringify(token):
-    return ' '.join(token)
+    return bert_tokenizer.convert_tokens_to_string(token)
 
-def token_to_index(token, vocab_object):
-    return [vocab_object[tok] for tok in token]
+def token_to_index(token):
+    return bert_tokenizer.convert_tokens_to_ids(token)
 
-def index_to_token(index, vocab_object):
-    return [vocab_object.get_itos()[ind] for ind in index]
+def index_to_token(index):
+    return bert_tokenizer.convert_ids_to_tokens(index)
 
-def pseudo_tokenizer(string, use_spacy=True):
-    return shuffle(tokenizer(string, use_spacy=True), random_state=1234)
-
-def remove_bos_eos(idx_list, bos_id, eos_id, pad_id):
+def remove_bos_eos(index):
     clear_idx = []
-    for idx in idx_list:
-        if idx == eos_id:
-            return remove_pad(clear_idx, pad_id)
+    for idx in index:
+        if idx == bert_tokenizer.eos_token_id:
+            return remove_pad(clear_idx)
         else:
-            if idx == bos_id:
+            if idx == bert_tokenizer.bos_token_id:
                 continue
             else:
                 clear_idx.append(idx)
     
-    return remove_pad(clear_idx, pad_id)
+    return remove_pad(clear_idx)
 
-def remove_pad(idx_list, pad_id):
+def remove_pad(index):
     clear_idx = []
-    for idx in idx_list:
-        if idx == pad_id:
+    for idx in index:
+        if idx == bert_tokenizer.pad_token_id:
             continue
         else:
             clear_idx.append(idx)
