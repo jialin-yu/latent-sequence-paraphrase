@@ -11,7 +11,7 @@ class Configs(object):
         self.quora_train_max = 115000
         self.quora_valid = 3000
         self.quora_test = 30000
-        self.qu_batch_size = 256
+        self.qu_batch_size = 512
         
         self.mscoco_max_len = 20
         self.mscoco_train_max = 115000
@@ -27,7 +27,6 @@ class Configs(object):
 
         self.vocab_size = None
         self.pad_id = None
-        self.hid_dim = None
 
         self.inf = float('inf')
 

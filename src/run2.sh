@@ -13,9 +13,11 @@ source ../env/bin/activate
 module load cuda/11.3
 
 python test.py \
-    --seed=1000 \
+    --data='quora' \
     --un_train_size=115000 \
     --train_size=115000 \
     --seq2seq_lr=0.0001 \
     --n_lays=6 \
-    --seq2seq_max_epoch=100 \
+    --seq2seq_max_epoch=50 \
+    --duo=False \
+

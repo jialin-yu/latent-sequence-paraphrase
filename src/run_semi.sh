@@ -15,10 +15,11 @@ module load cuda/11.3
 python run_semi.py \
     --data='quora' \
     --seed=1000 \
-    --lm_lr=1e-4 \
+    --lm_lr=0.0001 \
     --lm_max_epoch=30 \
-    --un_train_size=115000 \
-    --train_size=115000 \
-    --semi_lr=1e-4 \
-    --n_lays=3 \
-    --semi_max_epoch=30 \
+    --un_train_size=10000 \
+    --train_size=10000 \
+    --semi_lr=0.0001 \
+    --n_lays=6 \
+    --semi_max_epoch=2 \
+    --use_pretrain_lm=False\

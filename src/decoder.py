@@ -1,14 +1,16 @@
 import torch.nn as nn
 import torch.nn.functional as F
 import torch
+from pos_emb import PosEmbedding
+from tok_emb import TokEmbedding
 
 class Decoder(nn.Module):
     def __init__(self, configs):
         super().__init__()
         
         self.device = configs.device
-        # self.tok_emb = nn.Embedding(configs.vocab_size, configs.hid_dim)
-        # self.pos_emb = nn.Embedding(configs.max_len, configs.hid_dim)
+        self.pos_emb = PosEmbedding(configs)
+        self.tok_emb = TokEmbedding(configs)
         decoder_layer = nn.TransformerDecoderLayer(d_model=configs.hid_dim, nhead=configs.n_heads, dropout=configs.dropout, batch_first=True)
         self.decoder = nn.TransformerDecoder(decoder_layer, num_layers=configs.n_lays)
         self.dropout = nn.Dropout(configs.dropout)
@@ -19,7 +21,7 @@ class Decoder(nn.Module):
         '''
         INPUT: 
         
-        trg (B, T-1, H); <bos> y 
+        trg (B, T-1); <bos> y 
         src_memory (B, S, H) <bos> x <eos>
         trg_m (T-1, T-1)
         trg_src_m (T-1, S)
@@ -31,24 +33,5 @@ class Decoder(nn.Module):
         trg_ (B, T-1, V); y_ <eos> 
         '''
 
-        y_ = self.decoder(trg.float(), src_memory, trg_m, trg_src_m, trg_pm, src_memory_pm)
-        y_ = self.linear(y_)
-
-        return y_
-
-        # if trg_hard:
-        #     B, T = trg.size()
-        #     pos = torch.arange(0, T).unsqueeze(0).repeat(B, 1).to(self.device) 
-        #     trg = self.dropout((self.tok_emb(trg) * self.scale) + self.pos_emb(pos))
-        #     y_ = self.decoder(trg, src_memory, trg_m, trg_src_m, trg_pm, src_memory_pm) 
-        #     # y_ = F.softmax(self.linear(y_), dim=-1)
-        #     y_ = self.linear(y_)
-        # else:
-        #     B, T, _ = trg.size()
-        #     pos = torch.arange(0, T).unsqueeze(0).repeat(B, 1).to(self.device) 
-        #     trg = self.dropout(((trg.double() @ self.tok_emb.weight.double())* self.scale) + self.pos_emb(pos))
-        #     y_ = self.decoder(trg.float(), src_memory, trg_m, trg_src_m, trg_pm, src_memory_pm)
-        #     # print('This line okayy')
-        #     y_ = self.linear(y_)
-        #     # y_ = F.softmax(self.linear(y_), dim=-1)
+        return self.linear(self.decoder(self.pos_emb(self.tok_emb(trg)), src_memory, trg_m, trg_src_m, trg_pm, src_memory_pm))
     

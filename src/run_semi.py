@@ -72,7 +72,9 @@ def main():
         '-semime', '--semi_max_epoch', type=int, default=15)
     parser.add_argument(
         '-semilr', '--semi_lr', type=float, default=1e-4)
-    
+
+    parser.add_argument(
+        '-hdm', '--hid_dim', type=int, default=512)
     parser.add_argument(
         '-nh', '--n_heads', type=int, default=8)
     parser.add_argument(
@@ -88,7 +90,8 @@ def main():
 
     configs = Configs(**vars(args))
     interface = Trainer(configs)
-    interface.main_lm()
+    if configs.use_pretrain_lm == True:
+        interface.main_lm()
     # interface.main_vae()
     # interface.main_seq2seq()
     interface.main_semi_supervised()

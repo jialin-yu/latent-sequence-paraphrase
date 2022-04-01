@@ -5,7 +5,7 @@ import torch.nn.functional as F
 from encoder import Encoder
 from decoder import Decoder
 from pos_emb import PosEmbedding
-from transformers import BertModel
+from tok_emb import TokEmbedding
 
 from lm import LanguageModel
 
@@ -20,28 +20,16 @@ class Transformer(nn.Module):
 
         self.pad_id = configs.pad_id
         self.vocab_size = configs.vocab_size
-
-        with torch.no_grad():
-            self.bert = BertModel.from_pretrained('bert-base-uncased').to(self.device)
-            self.bert.eval()
         
-        self.configs = configs
-        self.configs.hid_dim = self.bert.config.hidden_size
-        self.prior = LanguageModel(self.configs)
+        self.prior = LanguageModel(configs)
 
-        self.src_encoder = Encoder(self.configs)
-        self.trg_decoder = Decoder(self.configs)
+        self.src_encoder = Encoder(configs)
+        self.trg_decoder = Decoder(configs)
         
-        self.trg_encoder = Encoder(self.configs)
-        self.src_decoder = Decoder(self.configs)
-
-        self.pos_emb = PosEmbedding(self.configs)
+        self.trg_encoder = Encoder(configs)
+        self.src_decoder = Decoder(configs)
         
-        # the loss should return in per batch
         self.loss = nn.CrossEntropyLoss(ignore_index=self.pad_id, reduction="none")
-
-    def _get_emb(self, x):
-        return self.bert(x)['last_hidden_state']
 
     def _get_causal_mask(self, src, trg):
         '''
@@ -91,7 +79,7 @@ class Transformer(nn.Module):
 
         return src_pm, trg_pm
 
-    def decode_lm(self, lm_model, src):
+    def decode_lm(self, model, src):
         '''
         INPUT:
         src (B, S-1); <bos> x
@@ -101,8 +89,7 @@ class Transformer(nn.Module):
         '''
         src_m, _, _ = self._get_causal_mask(src, src)
         src_pm, _ = self._get_padding_mask(src, src)
-        src_emb = self._get_emb(src)
-        output = lm_model.decode(src_emb, src_m, src_pm)
+        output = model.decode(src, src_m, src_pm)
         return output
 
     def encode_sample_decode(self, encoder, decoder, src, gumbel_max=False, temperature=None):
@@ -116,13 +103,10 @@ class Transformer(nn.Module):
         And straight through (hard/soft)
         https://arxiv.org/pdf/1308.3432.pdf
 
-        If latent_hard in 'one-hot' format; else in 'soft' format
-
         if gumbel_max, temperature is required
         
         INPUT:
         src (B, S); <bos> x <eos>
-        src_emb (B, S); <bos> x <eos>
 
         RETURN: 
         trg_ (B, T, V) <bos> y_ <eos>
@@ -131,28 +115,25 @@ class Transformer(nn.Module):
         _, T = src.size()
         
         src_pm, _ = self._get_padding_mask(src, src)
-        # enc_src = encoder.encode(src, None, src_pm, True)
-        enc_src = encoder.encode(self.pos_emb(self._get_emb(src)), None, src_pm)
-        dec_temp= F.one_hot(src, self.vocab_size)[:, 0].unsqueeze(1).double().detach() # B, 1, V
+        enc_src = encoder.encode(src, None, src_pm)
+        dec_temp = src[:, 0].unsqueeze(1).detach()
+        # dec_temp= F.one_hot(src, self.vocab_size)[:, 0].unsqueeze(1).double().detach() # B, 1, V
 
         for i in range(T-1):
 
-            hard_trg = torch.argmax(dec_temp, dim=2)
-            _, trg_m, trg_src_m = self._get_causal_mask(src, hard_trg)
-            _, trg_pm = self._get_padding_mask(src, hard_trg)
+            _, trg_m, trg_src_m = self._get_causal_mask(src, dec_temp)
+            _, trg_pm = self._get_padding_mask(src, dec_temp)
 
-            
-            hard_trg = self.pos_emb(self._get_emb(dec_temp))
-            dec_out = decoder.decode(hard_trg, enc_src, trg_m, trg_src_m, trg_pm, src_pm)
+            dec_out = decoder.decode(dec_temp, enc_src, trg_m, trg_src_m, trg_pm, src_pm)
                 
             if gumbel_max:
-                trg_new = gumbel_softmax(dec_out, temperature)[:, -1].unsqueeze(1)
+                trg_new = torch.argmax(gumbel_softmax(dec_out, temperature), dim=2)[:, -1].unsqueeze(1)
                 dec_temp = torch.cat((dec_temp, trg_new), dim=1).detach()
             else:
-                trg_new = straight_through_softmax(dec_out)[:, -1].unsqueeze(1) 
+                trg_new = torch.argmax(straight_through_softmax(dec_out), dim=2)[:, -1].unsqueeze(1) 
                 dec_temp = torch.cat((dec_temp, trg_new), dim=1).detach()
             
-        assert dec_temp.size()[:-1] == src.size()
+        assert dec_temp.size() == src.size()
         # out = torch.cat((dec_temp, dec_out), dim=1)
         return dec_temp, dec_out
     
@@ -167,10 +148,8 @@ class Transformer(nn.Module):
 
         src_pm, trg_pm = self._get_padding_mask(src, trg)
         _, trg_m, trg_src_m = self._get_causal_mask(src, trg)
-        src_emb = self.pos_emb(self._get_emb(src))
-        enc_src = encoder.encode(src_emb, None, src_pm)
-        trg_emb = self.pos_emb(self._get_emb(trg))
-        dec_out = decoder.decode(trg_emb, enc_src, trg_m, trg_src_m, trg_pm, src_pm)
+        enc_src = encoder.encode(src, None, src_pm)
+        dec_out = decoder.decode(trg, enc_src, trg_m, trg_src_m, trg_pm, src_pm)
         
         return dec_out
 
@@ -184,8 +163,7 @@ class Transformer(nn.Module):
         '''
         
         src_pm, _ = self._get_padding_mask(src, src)
-        src_emb = self.pos_emb(self._get_emb(src))
-        enc_src = encoder.encode(src_emb, None, src_pm)
+        enc_src = encoder.encode(src, None, src_pm)
         dec_temp= src[:, 0].unsqueeze(1) # B, 1
 
         for i in range(max_len-1):
@@ -193,8 +171,7 @@ class Transformer(nn.Module):
             _, trg_m, trg_src_m = self._get_causal_mask(src, dec_temp)
             _, trg_pm = self._get_padding_mask(src, dec_temp)
 
-            dec_temp_emb = self.pos_emb(self._get_emb(dec_temp))
-            dec_out = decoder.decode(dec_temp_emb, enc_src, trg_m, trg_src_m, trg_pm, src_pm)
+            dec_out = decoder.decode(dec_temp, enc_src, trg_m, trg_src_m, trg_pm, src_pm)
             dec_out_ = torch.argmax(dec_out, dim=2)[:, -1].unsqueeze(1)
             dec_temp = torch.cat((dec_temp, dec_out_), dim=1)
         
@@ -222,15 +199,3 @@ class Transformer(nn.Module):
         '''
         q_ = torch.argmax(q, dim=2)
         return self._reconstruction_loss(p, q_) - self._reconstruction_loss(q, q_)
-    
-    def _JSD_loss(self, q, p):
-        '''
-        Calculate Jensen–Shannon divergence loss between q and p 
-        JSD(p|q) = 1/2*KL(P|M) + 1/2*KL(Q|M)
-        q: (B, T, V) xxxx <eos> 
-        p: (B, T, V)  xxxx <eos>
-
-        Returns: loss in (B*T)
-        '''
-        m = 0.5*(q+p)
-        return 0.5 * self._KL_loss(q, m) + 0.5 * self._KL_loss(p, m) 

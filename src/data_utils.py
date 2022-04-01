@@ -87,45 +87,6 @@ def calculate_stats(sentence_sets):
     np_arr = np.array(tmp)
     print(f'Mean: {np.ceil(np.mean(np_arr))}; STD: {np.ceil(np.std(np_arr))}; Min: {np.ceil(np.min(np_arr))} and Max: {np.ceil(np.max(np_arr))}')
 
-#################################################
-############## Build Vocabulary     #############
-#################################################
-
-def create_vocab(sentence_sets, min_freq=1, max_size=None):
-    MIN_FREQUENT = min_freq
-    print(f'Creating vocab object ...')
-    
-    counter = Counter()
-    for sets in tqdm(sentence_sets):
-        if len(sets) == 3:           
-            counter.update(sets[0])
-            counter.update(sets[1])
-        else:
-            counter.update(sets[0])
-            counter.update(sets[1])
-            counter.update(sets[2])
-            counter.update(sets[3])
-            counter.update(sets[4])
-
-    sorted_by_freq_tuples = sorted(counter.items(), key=lambda x: x[1], reverse=True)
-    if max_size == None:
-        MAX_SIZE = len(sorted_by_freq_tuples)
-    else:
-        MAX_SIZE = max_size
-    sorted_by_freq_tuples = sorted_by_freq_tuples[:MAX_SIZE]
-    ordered_dict = OrderedDict(sorted_by_freq_tuples)
-    VOCAB = vocab(ordered_dict, MIN_FREQUENT)
-    print(f'Vocab object created with size {len(VOCAB)}.')
-    return VOCAB
-
-def append_special_tokens(vocab_object, sp_tokens, unk_id):
-    print(f'Assigning special tokens of size {len(sp_tokens)}.')
-    for index, token in enumerate(tqdm(sp_tokens)): 
-        vocab_object.insert_token(token, index)      
-    vocab_object.set_default_index(unk_id)
-    print(f'Set default token as {sp_tokens[unk_id]}.') 
-    print(f'Vocabulary size is now {len(vocab_object)}.')
-    return vocab_object
 
 #################################################
 ################   Normalise Data   #############

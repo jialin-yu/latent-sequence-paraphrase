@@ -20,13 +20,11 @@ class PosEmbedding(nn.Module):
     def forward(self, x_tok):
         '''
         INPUT: 
-        x (B, S, V) if hard == False
+        x (B, S, H) <bos> x <eos>
         RETURN: 
         x_ (B, S, H); <bos> x_ <eos> 
         '''
         # print(x_tok.size())
-        # print(self.emb[:, :x_tok.size(1), :].size())
-
-        
+        # print(self.emb[:, :x_tok.size(1), :].size(
         
         return self.dropout(x_tok + self.emb[:, :x_tok.size(1), :])
