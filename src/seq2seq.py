@@ -1,35 +1,51 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import random
 
-from encoder import TransformerEncoder
-from decoder import TransformerDecoder
-from pos_emb import PosEmbedding
-from tok_emb import TokEmbedding
-
-from lm import LanguageModel
+from encoder import Seq2SeqEncoder
+from decoder import Seq2SeqDecoder
 
 from sample import straight_through_softmax, gumbel_softmax
     
 
-class Transformer(nn.Module):
+class Seq2Seq(nn.Module):
 
     def __init__(self, configs):
-        super(Transformer, self).__init__()
+        super(Seq2Seq, self).__init__()
         
         self.device = configs.device
         self.pad_id = configs.pad_id
         self.vocab_size = configs.vocab_size
-        
-        self.prior = LanguageModel(configs)
 
-        self.src_encoder = TransformerEncoder(configs)
-        self.trg_decoder = TransformerDecoder(configs)
-        
-        self.trg_encoder = TransformerEncoder(configs)
-        self.src_decoder = TransformerDecoder(configs)
+        self.encoder = Seq2SeqEncoder(configs)
+        self.decoder = Seq2SeqDecoder(configs)
         
         self.loss = nn.CrossEntropyLoss(ignore_index=self.pad_id, reduction="none")
+    
+    def forward(self, src, trg, teacher_forcing_ratio = 0.5):
+        
+        batch_size = trg.shape[1]
+        trg_len = trg.shape[0]
+        trg_vocab_size = self.decoder.output_dim
+
+        outputs = torch.zeros(trg_len, batch_size, trg_vocab_size).to(self.device)
+
+        hidden, cell = self.encoder.encode(src)
+
+        input = trg[0,:]
+
+        for t in range(1, trg_len):
+
+            output, hidden, cell = self.decoder.decode(input, hidden, cell)
+            outputs[t] = output
+            teacher_force = random.random() < teacher_forcing_ratio
+            top1 = output.argmax(1)
+            input = trg[t] if teacher_force else top1
+        
+        return outputs
+
+
 
     def _get_causal_mask(self, src, trg):
         '''
@@ -116,23 +132,22 @@ class Transformer(nn.Module):
         
         src_pm, _ = self._get_padding_mask(src, src)
         enc_src = encoder.encode(src, None, src_pm)
-        dec_temp= src.detach()[:, 0].unsqueeze(1) # B, 1
+        dec_temp = src[:, 0].unsqueeze(1).detach()
+        # dec_temp= F.one_hot(src, self.vocab_size)[:, 0].unsqueeze(1).double().detach() # B, 1, V
 
         for i in range(T-1):
-            
+
             _, trg_m, trg_src_m = self._get_causal_mask(src, dec_temp)
             _, trg_pm = self._get_padding_mask(src, dec_temp)
 
             dec_out = decoder.decode(dec_temp, enc_src, trg_m, trg_src_m, trg_pm, src_pm)
                 
             if gumbel_max:
-                trg_new = torch.argmax(gumbel_softmax(dec_out, temperature), dim=2)[:, -1].unsqueeze(1)
+                trg_new = torch.argmax(gumbel_softmax(dec_out, temperature), dim=2)[:, -1].unsqueeze(1).detach()
                 dec_temp = torch.cat((dec_temp, trg_new), dim=1)
-                # dec_temp = torch.cat((dec_temp, trg_new), dim=1).detach()
             else:
-                trg_new = torch.argmax(straight_through_softmax(dec_out), dim=2)[:, -1].unsqueeze(1)
+                trg_new = torch.argmax(straight_through_softmax(dec_out), dim=2)[:, -1].unsqueeze(1).detach()
                 dec_temp = torch.cat((dec_temp, trg_new), dim=1)
-                # dec_temp = torch.cat((dec_temp, trg_new), dim=1).detach()
             
         assert dec_temp.size() == src.size()
         return dec_temp, dec_out
@@ -145,18 +160,11 @@ class Transformer(nn.Module):
 
         Return: (B, T-1, V) y_ <eos>
         '''
-        if len(src.size()) == 2:
-            src_pm, trg_pm = self._get_padding_mask(src, trg)
-            _, trg_m, trg_src_m = self._get_causal_mask(src, trg)
-            enc_src = encoder.encode(src, None, src_pm)
-            dec_out = decoder.decode(trg, enc_src, trg_m, trg_src_m, trg_pm, src_pm)
-        else:
-            src_emb = src
-            src = torch.argmax(src, dim=2)
-            src_pm, trg_pm = self._get_padding_mask(src, trg)
-            _, trg_m, trg_src_m = self._get_causal_mask(src, trg)
-            enc_src = encoder.encode(src_emb, None, src_pm)
-            dec_out = decoder.decode(trg, enc_src, trg_m, trg_src_m, trg_pm, src_pm)
+
+        src_pm, trg_pm = self._get_padding_mask(src, trg)
+        _, trg_m, trg_src_m = self._get_causal_mask(src, trg)
+        enc_src = encoder.encode(src, None, src_pm)
+        dec_out = decoder.decode(trg, enc_src, trg_m, trg_src_m, trg_pm, src_pm)
         
         return dec_out
 

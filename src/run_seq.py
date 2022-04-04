@@ -21,13 +21,8 @@ def main():
             raise argparse.ArgumentTypeError('Boolean value expected.')
     
     parser = argparse.ArgumentParser()
-    
     parser.add_argument(
         '-d', '--data', type=str, default='quora')
-
-    parser.add_argument(
-        '-s', '--seed', type=int, default=1234)
-
     parser.add_argument(
         '-utrs', '--un_train_size', type=int, default=20000)
     parser.add_argument(
@@ -70,6 +65,8 @@ def main():
         '-seq2seqlr', '--seq2seq_lr', type=float, default=1e-4)
     parser.add_argument(
         '-duo_train', '--duo', type=str2bool, default=False)
+    parser.add_argument(
+        '-adv_train', '--adv', type=str2bool, default=False)
 
     parser.add_argument(
         '-semidir', '--semi_dir', type=str, default='../model/semi/')
@@ -77,22 +74,24 @@ def main():
         '-semime', '--semi_max_epoch', type=int, default=15)
     parser.add_argument(
         '-semilr', '--semi_lr', type=float, default=1e-4)
-    
+
     parser.add_argument(
         '-hdm', '--hid_dim', type=int, default=512)
     parser.add_argument(
         '-nh', '--n_heads', type=int, default=8)
     parser.add_argument(
-        '-nl', '--n_lays', type=int, default=2)
+        '-nl', '--n_lays', type=int, default=6)
     parser.add_argument(
         '-dp', '--dropout', type=float, default=0.1)
+    parser.add_argument(
+        '-s', '--seed', type=int, default=1234)
 
     args = parser.parse_args()
     args.cuda = torch.cuda.is_available()
 
     configs = Configs(**vars(args))
     interface = Trainer(configs)
-    # interface.main_lm()
+    
     # interface.main_vae()
     interface.main_seq2seq()
     # interface.main_semi_supervised()

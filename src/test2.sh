@@ -12,12 +12,14 @@
 source ../env/bin/activate
 module load cuda/11.3
 
-python test.py \
+python run_semi.py \
     --data='quora' \
+    --seed=6500 \
+    --lm_lr=0.0001 \
+    --lm_max_epoch=30 \
     --un_train_size=115000 \
     --train_size=115000 \
-    --seq2seq_lr=0.0001 \
+    --semi_lr=0.0001 \
     --n_lays=6 \
-    --seq2seq_max_epoch=50 \
-    --duo=False \
-
+    --semi_max_epoch=30 \
+    --use_pretrain_lm=False\

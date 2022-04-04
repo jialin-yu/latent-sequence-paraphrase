@@ -17,7 +17,7 @@ class Configs(object):
         self.mscoco_train_max = 115000
         self.mscoco_valid = 3000
         self.mscoco_test = 5000
-        self.ms_batch_size = 1024
+        self.ms_batch_size = 512
 
         self.lm_dir = '../model/lm/'
         self.semi_dir = '../model/semi/'
@@ -43,13 +43,13 @@ class Configs(object):
         for name, value in kwargs.items():
             setattr(self, name, value)
         
-        lm_id = f'D_{self.data}_L_{self.lm_lr}_S_{self.seed}_E_{self.lm_max_epoch}'
+        lm_id = f'Data_{self.data}_Lr_{self.lm_lr}_Seed_{self.seed}_Ep_{self.lm_max_epoch}'
         self.lm_id = lm_id
 
-        seq2seq_id = f'D_{self.data}_TR_{self.train_size}_L_{self.seq2seq_lr}_S_{self.seed}_D_{self.duo}_E_{self.seq2seq_max_epoch}'
+        seq2seq_id = f'Data_{self.data}_Train_{self.train_size}_Lr_{self.seq2seq_lr}_Seed_{self.seed}_Duo_{self.duo}_Ep_{self.seq2seq_max_epoch}'
         self.seq2seq_id = seq2seq_id
 
-        semi_id = f'D_{self.data}_UNTR_{self.un_train_size}_TR_{self.train_size}_L_{self.semi_lr}_S_{self.seed}_G_{self.gumbel_max}_E_{self.semi_max_epoch}'
+        semi_id = f'Data_{self.data}_UNTrain_{self.un_train_size}_Train_{self.train_size}_Lr_{self.semi_lr}_Seed_{self.seed}_Gum_{self.gumbel_max}_Ep_{self.semi_max_epoch}'
         self.semi_id = semi_id
         
         

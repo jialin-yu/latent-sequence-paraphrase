@@ -3,7 +3,7 @@ import torch
 from pos_emb import PosEmbedding
 from tok_emb import TokEmbedding
 
-class Encoder(nn.Module):
+class TransformerEncoder(nn.Module):
     def __init__(self, configs):
         super().__init__()
         
@@ -27,4 +27,30 @@ class Encoder(nn.Module):
         x_ (B, S, H); <bos> x_ <eos> 
         '''
         return self.encoder(self.pos_emb(self.tok_emb(x)), x_m, x_pm) 
-            
+
+class Seq2SeqEncoder(nn.Module):
+    def __init__(self, configs):
+        super().__init__()
+        
+        self.device = configs.device
+        self.hid_dim = configs.hid_dim
+        self.n_layers = 2
+        self.dropout = 0.3
+        self.embedding = nn.Embedding(configs.vocab_size, configs.hid_dim)
+        self.rnn = nn.LSTM(configs.hid_dim, configs.hid_dim, self.n_layers, dropout = self.dropout)
+        self.dropout = nn.Dropout(self.dropout)
+
+    def encode(self, x):
+        '''
+        INPUT: 
+        
+        x (B, S); <bos> x <eos>
+        x_m (S, S) == None 
+        x_pm (B, S)
+
+        RETURN: 
+        x_ (B, S, H); <bos> x_ <eos> 
+        '''
+        embedded = self.dropout(self.embedding(x))
+        outputs, (hidden, cell) = self.rnn(embedded)
+        return hidden, cell

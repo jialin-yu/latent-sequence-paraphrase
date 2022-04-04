@@ -4,7 +4,7 @@ import torch
 from pos_emb import PosEmbedding
 from tok_emb import TokEmbedding
 
-class Decoder(nn.Module):
+class TransformerDecoder(nn.Module):
     def __init__(self, configs):
         super().__init__()
         
@@ -34,4 +34,35 @@ class Decoder(nn.Module):
         '''
 
         return self.linear(self.decoder(self.pos_emb(self.tok_emb(trg)), src_memory, trg_m, trg_src_m, trg_pm, src_memory_pm))
-    
+
+class Seq2SeqDecoder(nn.Module):
+    def __init__(self, configs):
+        super().__init__()
+        
+        self.device = configs.device
+        self.output_dim = configs.vocab_size
+        self.hid_dim = configs.hid_dim
+        self.n_layers = 2
+        self.dropout = 0.3
+        self.embedding = nn.Embedding(configs.vocab_size, configs.hid_dim)
+        self.rnn = nn.LSTM(configs.hid_dim, configs.hid_dim, self.n_layers, dropout = self.dropout)
+        self.fc_out = nn.Linear(configs.hid_dim, self.output_dim)
+        self.dropout = nn.Dropout(self.dropout)
+
+    def decode(self, input, hidden, cell):
+        '''
+        INPUT: 
+        
+        #input = [batch size]
+        x_m (S, S) == None 
+        x_pm (B, S)
+
+        RETURN: 
+        x_ (B, S, H); <bos> x_ <eos> 
+        '''
+        input = input.unsqueeze(0)
+        embedded = self.dropout(self.embedding(input))
+        output, (hidden, cell) = self.rnn(embedded, (hidden, cell))
+        prediction = self.fc_out(output.squeeze(0))
+
+        return prediction, hidden, cell

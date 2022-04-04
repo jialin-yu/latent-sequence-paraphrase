@@ -18,4 +18,8 @@ class TokEmbedding(nn.Module):
         RETURN: 
         x_ (B, S, H); <bos> x_ <eos> 
         '''
-        return self.emb(x) * self.scale
+        if len(x.size()) == 2:
+            return self.emb(x) * self.scale
+        else:
+            assert len(x.size()) == 3
+            return ((x.double() @ self.emb.weight.double()) * self.scale).float()

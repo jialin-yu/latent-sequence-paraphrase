@@ -187,6 +187,7 @@ class Trainer(object):
         seed = self.configs.seed
         experiment_id = self.configs.seq2seq_id
         seq2seq_duo = self.configs.duo
+        seq2seq_adv = self.configs.adv
 
         print(f'{"-"*20} Initialise seq2seq experiment {"-"*20}')
         print(f'Use model directory {model_dir}')
@@ -209,19 +210,18 @@ class Trainer(object):
         EXP_START = time.time()
         best_valid_loss = float('inf')
         for epoch in range(max_epoch):
-            
-            train_loss = self._train_seq2seq(self.train_data, optimizer, grad_clip, duo=seq2seq_duo)
-            valid_loss = self._evaluate_seq2seq(self.valid_data, duo=seq2seq_duo)
-            
+            if seq2seq_adv:
+                train_loss = self._train_seq2seq_ad(self.train_data, optimizer, grad_clip, duo=seq2seq_duo)
+            else:
+                train_loss = self._train_seq2seq(self.train_data, optimizer, grad_clip, duo=seq2seq_duo)
+            # train_loss_ = self._train_seq2seq_ad(self.train_data, optimizer, grad_clip, duo=seq2seq_duo)
             if seq2seq_duo:
                 wandb.log({'train-loss_duo': train_loss}, step=epoch+1)
-                wandb.log({'valid-loss_duo': valid_loss}, step=epoch+1)
             else:
                 wandb.log({'train-loss': train_loss}, step=epoch+1)
-                wandb.log({'valid-loss': valid_loss}, step=epoch+1)
-            
+            valid_loss = self._evaluate_seq2seq(self.valid_data, duo=seq2seq_duo)
+            wandb.log({'valid-loss': valid_loss}, step=epoch+1)
             print(f'{"-"*20} Epoch {epoch + 1}/{max_epoch} training done {"-"*20}')
-            
             if valid_loss < best_valid_loss:
                 best_valid_loss = valid_loss 
                 self._save_model(self.model, model_dir, experiment_id)
@@ -231,7 +231,7 @@ class Trainer(object):
         print(f'{"-"*20} Retrieve best model for testing {"-"*20}')
         self._load_model(self.model, model_dir, experiment_id)
         self.model.to(self.device)
-        valid_loss = self._evaluate_seq2seq(self.test_data, duo=seq2seq_duo)
+        valid_loss = self._evaluate_seq2seq(self.test_data)
         print(f'Seq2seq experiment done in {time.time() - EXP_START}s.')
         print(f'{"-"*40}')
 
@@ -391,7 +391,7 @@ class Trainer(object):
         print(f'SEMI experiment done in {time.time() - EXP_START}s.')
         print(f'{"-"*40}')
 
-        self.main_inference(self.test_data, self.test_split, interpolate_latent=True)
+        self.main_inference(self.test_data, self.test_split)
 
     def _batchify(self, batch):
         
@@ -559,13 +559,60 @@ class Trainer(object):
 
             optimizer.step()
 
-            if duo:
-                epoch_loss += (loss.item())/2
-            else:
-                epoch_loss += loss.item()
+            epoch_loss += loss.item()
 
-            if idx % log_inter == 0 and idx > 0:    
-                print(f'| Batches: {idx}/{len(dataloader)} | PPL: {math.exp(epoch_loss/(idx+1))} | LOSS: {epoch_loss/(idx+1)} |')
+            if idx % log_inter == 0 and idx > 0:
+                if duo:
+                    print(f'| Batches: {idx}/{len(dataloader)} | PPL: {math.exp(epoch_loss/(idx+1)/2)} | LOSS: {epoch_loss/(idx+1)/2} |')
+                else:
+                    print(f'| Batches: {idx}/{len(dataloader)} | PPL: {math.exp(epoch_loss/(idx+1))} | LOSS: {epoch_loss/(idx+1)} |')
+        
+        elapsed = time.time() - start_time
+        print(f'Epoch training time is: {elapsed}s.')
+        return epoch_loss / len(dataloader)
+
+    def _train_seq2seq_ad(self, dataloader, optimizer, grad_clip, duo=True):
+        self.model.train()
+        epoch_loss = 0
+        start_time = time.time()
+
+        log_inter = len(dataloader) // 3
+        for idx, (src, trg) in enumerate(tqdm(dataloader)):
+            optimizer.zero_grad()
+            
+            src_ = self.model.encode_and_decode(self.model.trg_encoder, self.model.src_decoder,
+                trg, src[:,:-1])
+            trg_ = self.model.encode_and_decode(self.model.src_encoder, self.model.trg_decoder,
+                src, trg[:,:-1])
+
+            loss_src = self.model._reconstruction_loss(src_, src[:, 1:])
+            loss_trg = self.model._reconstruction_loss(trg_, trg[:, 1:]) 
+            
+            loss_src_ad = self.model._reconstruction_loss(src_, src[:, 1:].flip(dims=[1]))
+            loss_trg_ad = self.model._reconstruction_loss(trg_, trg[:, 1:].flip(dims=[1]))
+
+            if duo:
+                loss = (torch.mean(loss_src) - torch.mean(loss_src_ad)) + (torch.mean(loss_trg) - torch.mean(loss_trg_ad))
+                loss.backward()
+            else:
+                # loss = torch.mean(loss_trg)
+                loss = (torch.mean(loss_trg) - torch.mean(loss_trg_ad))
+                loss.backward()
+
+            torch.nn.utils.clip_grad_norm_(self.model.src_encoder.parameters(), grad_clip)
+            torch.nn.utils.clip_grad_norm_(self.model.trg_decoder.parameters(), grad_clip)
+            torch.nn.utils.clip_grad_norm_(self.model.trg_encoder.parameters(), grad_clip)
+            torch.nn.utils.clip_grad_norm_(self.model.src_decoder.parameters(), grad_clip)
+
+            optimizer.step()
+
+            epoch_loss += loss.item()
+
+            if idx % log_inter == 0 and idx > 0:
+                if duo:
+                    print(f'| Batches: {idx}/{len(dataloader)} | PPL: {math.exp(epoch_loss/(idx+1)/2)} | LOSS: {epoch_loss/(idx+1)/2} |')
+                else:
+                    print(f'| Batches: {idx}/{len(dataloader)} | PPL: {math.exp(epoch_loss/(idx+1))} | LOSS: {epoch_loss/(idx+1)} |')
         
         elapsed = time.time() - start_time
         print(f'Epoch training time is: {elapsed}s.')
@@ -588,13 +635,15 @@ class Trainer(object):
 
             if duo:
                 loss = torch.mean(loss_src) + torch.mean(loss_trg)
-                epoch_loss += (loss.item()) / 2
             else:
                 loss = torch.mean(loss_trg)
-                epoch_loss += loss.item()
 
-                 
-        print(f'| PPL: {math.exp(epoch_loss/(idx+1))} | LOSS: {epoch_loss/(idx+1)} |')
+            epoch_loss += loss.item()
+
+        if duo:
+            print(f'| PPL: {math.exp(epoch_loss/(idx+1)/2)} | LOSS: {epoch_loss/(idx+1)/2} |')
+        else:         
+            print(f'| PPL: {math.exp(epoch_loss/(idx+1))} | LOSS: {epoch_loss/(idx+1)} |')
         
         elapsed = time.time() - start_time
         print(f'Epoch evaluateion time is: {elapsed}s.')
@@ -660,14 +709,14 @@ class Trainer(object):
 
             epoch_total_loss += loss.item()
             epoch_vae_loss += vae_loss.item()
-            epoch_seq2seq_loss += seq2seq_loss.item() / 2
+            epoch_seq2seq_loss += seq2seq_loss.item()
             epoch_rec_loss += torch.mean(rec_loss).item()
             epoch_kl_loss += torch.mean(kl_loss).item()
 
             if idx % log_inter == 0 and idx > 0:
                 print(f'{"-"*20} Batches: {idx}/{len(dataloader)} {"-"*20}')
                 print(f'For VAE | TOTAL LOSS: {epoch_vae_loss/(idx+1)} | PPL: {math.exp(epoch_rec_loss/(idx+1))} | REC Loss: {epoch_rec_loss/(idx+1)} | KL Loss: {epoch_kl_loss/(idx+1)} |')
-                print(f'| FOR SEQ2SEQ | TOTAL LOSS: {epoch_seq2seq_loss/(idx+1)} | PPL: {math.exp(epoch_seq2seq_loss/(idx+1))} |')
+                print(f'| FOR SEQ2SEQ | TOTAL LOSS: {epoch_seq2seq_loss/(idx+1)/2} | PPL: {math.exp(epoch_seq2seq_loss/(idx+1)/2)} |')
                 print(f'| IN GENERAL | TOTAL LOSS: {epoch_total_loss/(idx+1)} |')
         elapsed = time.time() - start_time
         print(f'Epoch training time is: {elapsed}s.')
@@ -722,13 +771,13 @@ class Trainer(object):
 
             epoch_total_loss += loss.item()
             epoch_vae_loss += vae_loss.item()
-            epoch_seq2seq_loss += seq2seq_loss.item() / 2
+            epoch_seq2seq_loss += seq2seq_loss.item()
             epoch_rec_loss += torch.mean(rec_loss).item()
             epoch_kl_loss += torch.mean(kl_loss).item()
 
         print(f'{"-"*20} Evaluation Result {"-"*20}')
         print(f'For VAE | TOTAL LOSS: {epoch_vae_loss/(idx+1)} | PPL: {math.exp(epoch_rec_loss/(idx+1))} | REC Loss: {epoch_rec_loss/(idx+1)} | KL Loss: {epoch_kl_loss/(idx+1)} |')
-        print(f'| FOR SEQ2SEQ | TOTAL LOSS: {epoch_seq2seq_loss/(idx+1)} | PPL: {math.exp(epoch_seq2seq_loss/(idx+1))} |')
+        print(f'| FOR SEQ2SEQ | TOTAL LOSS: {epoch_seq2seq_loss/(idx+1)/2} | PPL: {math.exp(epoch_seq2seq_loss/(idx+1)/2)} |')
         print(f'| IN GENERAL | TOTAL LOSS: {epoch_total_loss/(idx+1)} |')
         
         elapsed = time.time() - start_time
