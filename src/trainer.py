@@ -330,11 +330,11 @@ class Trainer(object):
         else:
             high_temp = 10
             low_temp = 0.01
-        if self.configs.un_train_size == self.configs.train_size:
-            # alpha_factor = self.configs.un_train_size / (self.configs.un_train_size + self.configs.train_size)
-            alpha_factor = 0.5
-        else:
-            alpha_factor = 0.8
+        # if self.configs.un_train_size == self.configs.train_size:
+        #     # alpha_factor = self.configs.un_train_size / (self.configs.un_train_size + self.configs.train_size)
+        #     alpha_factor = 0.5
+        # else:
+        #     alpha_factor = self.configs.un_train_size / (self.configs.un_train_size + self.configs.train_size)
         
         beta_factor = 0.5
         temperature = list(np.linspace(high_temp, low_temp, max_epoch))
@@ -354,8 +354,7 @@ class Trainer(object):
 
         print(f'Total model parameters {self._count_parameters(self.model)-self._count_parameters(self.model.prior)} ')
         print(f'Set high temperate as {high_temp} amd low temperature as {low_temp}')
-        print(f'Training with beta factor of {beta_factor}: ratio of {beta_factor} for reconstruction and ratio of {1-beta_factor} for KL')
-        print(f'Training with alpha factor of {alpha_factor}: ratio of {alpha_factor} for vae loss and ratio of {1-alpha_factor} for seq2seq loss')
+        print(f'Training with beta factor of {beta_factor} for KL')
         print(f'{"-"*40}')
 
         
@@ -370,9 +369,16 @@ class Trainer(object):
         EXP_START = time.time()
         best_valid_loss = float('inf')
         for epoch in range(max_epoch):
-            train_loss = self._train_semi(self.train_data, optimizer, grad_clip, temperature[epoch], alpha_factor, beta_factor)
-            wandb.log({'train-loss': train_loss}, step=epoch+1)
-            valid_loss = self._evaluate_semi(self.valid_data, low_temp, alpha_factor, beta_factor)
+            if self.configs.un_train_size == self.configs.train_size:
+                train_loss = self._train_semi(self.train_data, optimizer, grad_clip, temperature[epoch], beta_factor, balanced=True)
+                wandb.log({'train-loss': train_loss}, step=epoch+1)
+            else:
+                train_loss_b = self._train_semi(self.train_data, optimizer, grad_clip, temperature[epoch], beta_factor, balanced=True)
+                train_loss_nb = self._train_semi(self.un_data, optimizer, grad_clip, temperature[epoch], beta_factor, balanced=False)
+                train_loss = train_loss_b + train_loss_nb
+                wandb.log({'train-loss': train_loss}, step=epoch+1)
+
+            valid_loss = self._evaluate_semi(self.valid_data, low_temp, beta_factor)
             wandb.log({'valid-loss': valid_loss}, step=epoch+1)
             valid_loss_ = self._evaluate_seq2seq(self.valid_data, duo=True)
             wandb.log({'valid-seq2seq-loss': valid_loss_}, step=epoch+1)
@@ -387,7 +393,7 @@ class Trainer(object):
         print(f'{"-"*20} Retrieve best model for testing {"-"*20}')
         self._load_model(self.model, model_dir, experiment_id)
         self.model.to(self.device)
-        valid_loss = self._evaluate_semi(self.test_data, low_temp, alpha_factor, beta_factor)
+        valid_loss = self._evaluate_semi(self.test_data, low_temp, beta_factor)
         # valid_loss = self._evaluate_seq2seq(self.valid_data, duo=False)
         print(f'SEMI experiment done in {time.time() - EXP_START}s.')
         print(f'{"-"*40}')
@@ -410,7 +416,6 @@ class Trainer(object):
         
         assert un_train_size >= train_size
         assert un_train_size <= self.configs.quora_train_max
-        len_diff = un_train_size - train_size
         lm_size = self.configs.quora_train_max
         
         sentence_pairs = process_quora(self.configs.quora_fp)
@@ -428,11 +433,17 @@ class Trainer(object):
         train_valid_idx = shuffle(train_valid_idx, random_state=1234)
         lm_idx = train_valid_idx[:lm_size]
         lm_idx = shuffle(lm_idx, random_state=1234)
-        un_train_idx = train_valid_idx[:un_train_size]
-        un_train_idx = shuffle(un_train_idx, random_state=1234)
+
         train_idx = train_valid_idx[:train_size]
-        train_idx = train_idx + resample(train_idx, n_samples=len_diff, random_state=1234)
+        # train_idx = train_idx + resample(train_idx, n_samples=len_diff, random_state=1234)
         train_idx = shuffle(train_idx, random_state=1234)
+
+        if un_train_size > train_size:
+            un_train_idx = train_valid_idx[train_size:un_train_size]
+            un_train_idx = shuffle(un_train_idx, random_state=1234)
+        else:
+            # not gonna use this 
+            un_train_idx = train_idx
 
         valid_idx = train_valid_idx[-valid_size:]
 
@@ -601,7 +612,7 @@ class Trainer(object):
         print(f'Epoch evaluateion time is: {elapsed}s.')
         return epoch_loss / len(dataloader)
 
-    def _train_semi(self, dataloader, optimizer, grad_clip, temperature=None, alpha=0.5, beta=0.5):
+    def _train_semi(self, dataloader, optimizer, grad_clip, temperature=None, beta=0.5, balanced=True):
         self.model.train()
         epoch_total_loss, epoch_seq2seq_loss, epoch_vae_loss, epoch_rec_loss, epoch_kl_loss = 0, 0, 0, 0, 0
         start_time = time.time()
@@ -638,7 +649,7 @@ class Trainer(object):
             
             kl_loss = self.model._KL_loss(q_trg, p_trg)
 
-            vae_loss = beta*torch.mean(rec_loss) + (1-beta) * torch.mean(kl_loss)
+            vae_loss = torch.mean(rec_loss) + beta * torch.mean(kl_loss)
 
             src_de = self.model.encode_and_decode(self.model.trg_encoder, self.model.src_decoder,
                 trg, src[:,:-1])
@@ -651,7 +662,10 @@ class Trainer(object):
 
             seq2seq_loss = torch.mean(loss_src) + torch.mean(loss_trg)
 
-            loss = alpha*vae_loss + (1-alpha)*seq2seq_loss
+            if balanced:
+                loss = vae_loss + seq2seq_loss
+            else:
+                loss = vae_loss
 
             loss.backward()
 
@@ -664,20 +678,22 @@ class Trainer(object):
 
             epoch_total_loss += loss.item()
             epoch_vae_loss += vae_loss.item()
-            epoch_seq2seq_loss += seq2seq_loss.item() / 2
+            if balanced:
+                epoch_seq2seq_loss += seq2seq_loss.item() / 2
             epoch_rec_loss += torch.mean(rec_loss).item()
             epoch_kl_loss += torch.mean(kl_loss).item()
 
             if idx % log_inter == 0 and idx > 0:
                 print(f'{"-"*20} Batches: {idx}/{len(dataloader)} {"-"*20}')
                 print(f'For VAE | TOTAL LOSS: {epoch_vae_loss/(idx+1)} | PPL: {math.exp(epoch_rec_loss/(idx+1))} | REC Loss: {epoch_rec_loss/(idx+1)} | KL Loss: {epoch_kl_loss/(idx+1)} |')
-                print(f'| FOR SEQ2SEQ | TOTAL LOSS: {epoch_seq2seq_loss/(idx+1)} | PPL: {math.exp(epoch_seq2seq_loss/(idx+1))} |')
+                if balanced:
+                    print(f'| FOR SEQ2SEQ | TOTAL LOSS: {epoch_seq2seq_loss/(idx+1)} | PPL: {math.exp(epoch_seq2seq_loss/(idx+1))} |')
                 print(f'| IN GENERAL | TOTAL LOSS: {epoch_total_loss/(idx+1)} |')
         elapsed = time.time() - start_time
         print(f'Epoch training time is: {elapsed}s.')
         return epoch_total_loss / len(dataloader)
 
-    def _evaluate_semi(self, dataloader, temperature=None, alpha=0.5, beta=0.5):
+    def _evaluate_semi(self, dataloader, temperature=None, beta=0.5):
         self.model.eval()
         epoch_total_loss, epoch_seq2seq_loss, epoch_vae_loss, epoch_rec_loss, epoch_kl_loss = 0, 0, 0, 0, 0
         start_time = time.time()
@@ -709,7 +725,7 @@ class Trainer(object):
             
             kl_loss = self.model._KL_loss(q_trg, p_trg)
 
-            vae_loss = beta*torch.mean(rec_loss) + (1-beta) * torch.mean(kl_loss)
+            vae_loss = torch.mean(rec_loss) + beta * torch.mean(kl_loss)
 
             src_de = self.model.encode_and_decode(self.model.trg_encoder, self.model.src_decoder,
                 trg, src[:,:-1])
@@ -722,7 +738,7 @@ class Trainer(object):
 
             seq2seq_loss = torch.mean(loss_src) + torch.mean(loss_trg)
 
-            loss = alpha*vae_loss + (1-alpha)*seq2seq_loss
+            loss = vae_loss + seq2seq_loss
 
             epoch_total_loss += loss.item()
             epoch_vae_loss += vae_loss.item()

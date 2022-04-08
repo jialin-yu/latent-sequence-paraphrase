@@ -11,7 +11,6 @@ BY Jialin Yu
 
 import json
 import random
-from weakref import ref
 from datasets import load_metric
 from git import reference
 import numpy as np
