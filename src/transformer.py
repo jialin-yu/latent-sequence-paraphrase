@@ -1,3 +1,4 @@
+from numpy import argmax
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -9,7 +10,7 @@ from tok_emb import TokEmbedding
 
 from lm import LanguageModel
 
-from sample import straight_through_softmax, gumbel_softmax
+from sample import straight_through_softmax, gumbel_softmax_sample
     
 
 class Transformer(nn.Module):
@@ -116,26 +117,40 @@ class Transformer(nn.Module):
         
         src_pm, _ = self._get_padding_mask(src, src)
         enc_src = encoder.encode(src, None, src_pm)
-        dec_temp= src.detach()[:, 0].unsqueeze(1) # B, 1
-
-        for i in range(T-1):
+        dec_temp_hard = src[:, 0].unsqueeze(1).detach() # B, 1
+        dec_temp= F.one_hot(src, self.vocab_size)[:, 0].unsqueeze(1).double().detach() # B, 1, V
+        
+        for t in range(T-1):
             
-            _, trg_m, trg_src_m = self._get_causal_mask(src, dec_temp)
-            _, trg_pm = self._get_padding_mask(src, dec_temp)
+            _, trg_m, trg_src_m = self._get_causal_mask(src, dec_temp_hard)
+            _, trg_pm = self._get_padding_mask(src, dec_temp_hard)
 
-            dec_out = decoder.decode(dec_temp, enc_src, trg_m, trg_src_m, trg_pm, src_pm)
+            dec_out = decoder.decode(dec_temp, enc_src, trg_m, trg_src_m, trg_pm, src_pm) # B, t+1, V
                 
             if gumbel_max:
-                trg_new = torch.argmax(gumbel_softmax(dec_out, temperature), dim=2)[:, -1].unsqueeze(1)
-                dec_temp = torch.cat((dec_temp, trg_new), dim=1)
+                # new_temp = gumbel_softmax_sample(dec_out, temperature)[:, -1].unsqueeze(1) # B, 1, V
+                new_temp = gumbel_softmax_sample(dec_out, temperature)[:, -1].unsqueeze(1).detach() # B, 1, V
+                dec_temp = torch.cat((dec_temp, new_temp), dim=1) # B, t+2, V
+                new_temp_hard = torch.argmax(new_temp, dim=2)[:, -1].unsqueeze(1).detach()
+                dec_temp_hard = torch.cat((dec_temp_hard, new_temp_hard), dim=1)
+                # trg_new = torch.argmax(gumbel_softmax(dec_out, temperature), dim=2)[:, -1].unsqueeze(1)
+                # dec_temp = torch.cat((dec_temp, trg_new), dim=1)
                 # dec_temp = torch.cat((dec_temp, trg_new), dim=1).detach()
             else:
-                trg_new = torch.argmax(straight_through_softmax(dec_out), dim=2)[:, -1].unsqueeze(1)
-                dec_temp = torch.cat((dec_temp, trg_new), dim=1)
+                new_temp = straight_through_softmax(dec_out)[:, -1].unsqueeze(1) # B, 1, V
+                dec_temp = torch.cat((dec_temp, new_temp), dim=1) # B, t+2, V
+                new_temp_hard = torch.argmax(new_temp, dim=2)[:, -1].unsqueeze(1).detach()
+                dec_temp_hard = torch.cat((dec_temp_hard, new_temp_hard), dim=1)
+
+                # trg_new = torch.argmax(straight_through_softmax(dec_out), dim=2)[:, -1].unsqueeze(1)
+                # dec_temp = torch.cat((dec_temp, strg_new), dim=1)
                 # dec_temp = torch.cat((dec_temp, trg_new), dim=1).detach()
-            
-        assert dec_temp.size() == src.size()
-        return dec_temp, dec_out
+        
+        final_output = dec_out # B, T-1, V
+
+        assert dec_temp.size()[:-1] == src.size()
+        assert dec_temp_hard.size() == src.size()
+        return dec_temp, dec_temp_hard, final_output
     
     def encode_and_decode(self, encoder, decoder, src, trg):
         '''
@@ -151,11 +166,10 @@ class Transformer(nn.Module):
             enc_src = encoder.encode(src, None, src_pm)
             dec_out = decoder.decode(trg, enc_src, trg_m, trg_src_m, trg_pm, src_pm)
         else:
-            src_emb = src
-            src = torch.argmax(src, dim=2)
-            src_pm, trg_pm = self._get_padding_mask(src, trg)
-            _, trg_m, trg_src_m = self._get_causal_mask(src, trg)
-            enc_src = encoder.encode(src_emb, None, src_pm)
+            src_hard = torch.argmax(src, dim=2)
+            src_pm, trg_pm = self._get_padding_mask(src_hard, trg)
+            _, trg_m, trg_src_m = self._get_causal_mask(src_hard, trg)
+            enc_src = encoder.encode(src, None, src_pm)
             dec_out = decoder.decode(trg, enc_src, trg_m, trg_src_m, trg_pm, src_pm)
         
         return dec_out

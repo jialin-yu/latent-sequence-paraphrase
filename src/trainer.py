@@ -127,7 +127,7 @@ class Trainer(object):
                 for index, _ in enumerate(src):
                     temp = []
                     for j in range(size):
-                        latent_, _ = self.model.encode_sample_decode(self.model.src_encoder, self.model.trg_decoder, src[index].unsqueeze(0), self.configs.gumbel_max, 0.01)
+                        _, latent_, _ = self.model.encode_sample_decode(self.model.src_encoder, self.model.trg_decoder, src[index].unsqueeze(0), self.configs.gumbel_max, 0.01)
                         temp.append(latent_.squeeze().cpu())
                     latent_sample_idx.append(temp)
                     counter += 1
@@ -334,7 +334,8 @@ class Trainer(object):
             # alpha_factor = self.configs.un_train_size / (self.configs.un_train_size + self.configs.train_size)
             alpha_factor = 0.5
         else:
-            alpha_factor = 0.5
+            alpha_factor = 0.8
+        
         beta_factor = 0.5
         temperature = list(np.linspace(high_temp, low_temp, max_epoch))
 
@@ -610,8 +611,11 @@ class Trainer(object):
             optimizer.zero_grad()
 
             # trg_ (B, S, V)
-            trg_, trg_logit = self.model.encode_sample_decode(self.model.src_encoder, self.model.trg_decoder, 
-                        src, self.configs.gumbel_max, temperature) 
+            # trg_, trg_logit = self.model.encode_sample_decode(self.model.src_encoder, self.model.trg_decoder, 
+                        # src, self.configs.gumbel_max, temperature) 
+
+            trg_, trg_hard, trg_logit = self.model.encode_sample_decode(self.model.src_encoder, 
+                self.model.trg_decoder, src, self.configs.gumbel_max, temperature) 
 
             # src__ (B, S-1, V)
             src__ = self.model.encode_and_decode(self.model.trg_encoder, self.model.src_decoder,
@@ -681,8 +685,8 @@ class Trainer(object):
         for idx, (src, trg) in enumerate(tqdm(dataloader)):
 
             # trg_ (B, S, V)
-            trg_, trg_logit = self.model.encode_sample_decode(self.model.src_encoder, self.model.trg_decoder, 
-                        src, self.configs.gumbel_max, temperature) 
+            trg_, trg_hard, trg_logit = self.model.encode_sample_decode(self.model.src_encoder, 
+                self.model.trg_decoder, src, self.configs.gumbel_max, temperature) 
             
             # src__ (B, S-1, V)
             src__ = self.model.encode_and_decode(self.model.trg_encoder, self.model.src_decoder,

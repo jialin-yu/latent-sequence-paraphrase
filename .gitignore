@@ -5,3 +5,4 @@ model/
 **/__pycache__/
 note/
 src/wandb/
+src/**.out

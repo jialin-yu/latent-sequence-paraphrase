@@ -14,6 +14,7 @@ class TokEmbedding(nn.Module):
         '''
         INPUT: 
         x (B, S); <bos> x <eos>
+        x (B, S, V); <bos> x <eos>
 
         RETURN: 
         x_ (B, S, H); <bos> x_ <eos> 

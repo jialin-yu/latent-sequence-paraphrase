@@ -15,8 +15,8 @@ module load cuda/11.3
 python run_seq.py \
     --data='quora' \
     --seed=1000 \
-    --un_train_size=115000 \
-    --train_size=115000 \
+    --un_train_size=20000 \
+    --train_size=20000 \
     --seq2seq_lr=0.0001 \
     --n_lays=6 \
     --seq2seq_max_epoch=30 \
@@ -25,8 +25,8 @@ python run_seq.py \
 python run_seq.py \
     --data='quora' \
     --seed=2000 \
-    --un_train_size=115000 \
-    --train_size=115000 \
+    --un_train_size=20000 \
+    --train_size=20000 \
     --seq2seq_lr=0.0001 \
     --n_lays=6 \
     --seq2seq_max_epoch=30 \
@@ -35,8 +35,8 @@ python run_seq.py \
 python run_seq.py \
     --data='quora' \
     --seed=3000 \
-    --un_train_size=115000 \
-    --train_size=115000 \
+    --un_train_size=20000 \
+    --train_size=20000 \
     --seq2seq_lr=0.0001 \
     --n_lays=6 \
     --seq2seq_max_epoch=30 \
