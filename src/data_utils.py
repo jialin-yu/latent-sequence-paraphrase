@@ -20,6 +20,7 @@ from tqdm import tqdm
 from torchtext.vocab import vocab
 from collections import Counter, OrderedDict
 from sklearn.utils import shuffle
+from nltk.translate.bleu_score import corpus_bleu
 
 
 #################################################
@@ -111,7 +112,19 @@ def normalise(train_and_valid, test, cutoff):
 bleu_metric = load_metric('bleu')
 # from nltk.translate.bleu_score import corpus_bleu
 rouge_metric = load_metric('rouge')
-bertscore_metric = load_metric("bertscore")
+# bertscore_metric = load_metric("bertscore")
+
+def calculate_bleu(preds, refers):
+    '''
+    Return bleu score based on preds and refers
+    '''
+    B_1 = corpus_bleu(refers, preds, weights=(1, 0, 0, 0))
+    B_2 = corpus_bleu(refers, preds, weights=(0.5, 0.5, 0, 0))
+    B_3 = corpus_bleu(refers, preds, weights=(0.33, 0.33, 0.34, 0))
+    B_4 = corpus_bleu(refers, preds, weights=(0.25, 0.25, 0.25, 0.25))
+
+    return [B_1, B_2, B_3, B_4]
+
 
 def calculate_bound(pred_set, reference_set, bleu=False, rouge=False, inference=False):
     '''
@@ -130,22 +143,22 @@ def calculate_bound(pred_set, reference_set, bleu=False, rouge=False, inference=
         refer = [[s_ for s_ in s[1:]] for s in reference_set]
         # refer = [[s[1:-1]] for s in reference_set]
 
-        bleu = bleu_metric.compute(predictions=pred, references=refer, smooth=True)
-        # nltk_blue = corpus_bleu(list_of_references=refer, hypotheses=pred)
+        bleu = calculate_bleu(pred, refer)
 
         pred = shuffle_pred_set
 
-        bleu_ = bleu_metric.compute(predictions=pred, references=refer)
+        # bleu_ = bleu_metric.compute(predictions=pred, references=refer)
+        bleu_ = calculate_bleu(pred, refer)
         
         # print(f'bleu on the training set: {nltk_blue}')
 
         if (inference):
-            print(f'BLEU score is {bleu["bleu"]} and precisions are {bleu["precisions"]}.')
+            print(f'BLEU-1: {bleu[0]}; BLEU-2: {bleu[1]}; BLEU-3: {bleu[2]} and BLEU-4: {bleu[3]} .')
         else:
             print(f'{"-"*20} Ground truth upper bound {"-"*20}')
-            print(f'BLEU score is {bleu["bleu"]} and precisions are {bleu["precisions"]}.')
+            print(f'BLEU-1: {bleu[0]}; BLEU-2: {bleu[1]}; BLEU-3: {bleu[2]} and BLEU-4: {bleu[3]} .')
             print(f'{"-"*20} Random selection lower bound {"-"*20}')
-            print(f'BLEU score is {bleu_["bleu"]} and precisions are {bleu_["precisions"]}.')
+            print(f'BLEU-1: {bleu_[0]}; BLEU-2: {bleu_[1]}; BLEU-3: {bleu_[2]} and BLEU-4: {bleu_[3]} .')
     
     if (rouge):
 
@@ -167,24 +180,24 @@ def calculate_bound(pred_set, reference_set, bleu=False, rouge=False, inference=
             print(f'{"-"*20} Random selection lower bound {"-"*20}')
             print(f'ROUGE-1 score is {rouge_["rouge1"].mid.fmeasure}, ROUGE-2 score is {rouge_["rouge2"].mid.fmeasure}, and ROUGE-L score is {rouge_["rougeL"].mid.fmeasure}.')
 
-    a = False
-    if (a):
+    # a = False
+    # if (a):
 
-        print(f'{"-"*20} Calculate BERT score {"-"*20}')
-        pred = [stringify(s) for s in pred_set]
-        refer = [stringify(s[1]) for s in reference_set]
+    #     print(f'{"-"*20} Calculate BERT score {"-"*20}')
+    #     pred = [stringify(s) for s in pred_set]
+    #     refer = [stringify(s[1]) for s in reference_set]
 
-        bert = bertscore_metric.compute(predictions=pred, references=refer, lang="en")
+    #     bert = bertscore_metric.compute(predictions=pred, references=refer, lang="en")
 
-        pred = [stringify(s) for s in shuffle_pred_set]
+    #     pred = [stringify(s) for s in shuffle_pred_set]
         
-        bert_ = bertscore_metric.compute(predictions=pred, references=refer, lang="en")
+    #     bert_ = bertscore_metric.compute(predictions=pred, references=refer, lang="en")
         
-        if (inference):
-            print(f'BERT score precision is {np.mean(np.array(bert["precision"]))}, recall is {np.mean(np.array(bert["recall"]))}, and F1 is {np.mean(np.array(bert["f1"]))}.')
-        else:
-            print(f'{"-"*20} Ground truth upper bound {"-"*20}')
-            print(len(bert["precision"]))
-            print(f'BERT score precision is {np.mean(np.array(bert["precision"]))}, recall is {np.mean(np.array(bert["recall"]))}, and F1 is {np.mean(np.array(bert["f1"]))}.')
-            print(f'{"-"*20} Random selection lower bound {"-"*20}')
-            print(f'BERT score precision is {np.mean(np.array(bert_["precision"]))}, recall is {np.mean(np.array(bert_["recall"]))}, and F1 is {np.mean(np.array(bert_["f1"]))}.')
+    #     if (inference):
+    #         print(f'BERT score precision is {np.mean(np.array(bert["precision"]))}, recall is {np.mean(np.array(bert["recall"]))}, and F1 is {np.mean(np.array(bert["f1"]))}.')
+    #     else:
+    #         print(f'{"-"*20} Ground truth upper bound {"-"*20}')
+    #         print(len(bert["precision"]))
+    #         print(f'BERT score precision is {np.mean(np.array(bert["precision"]))}, recall is {np.mean(np.array(bert["recall"]))}, and F1 is {np.mean(np.array(bert["f1"]))}.')
+    #         print(f'{"-"*20} Random selection lower bound {"-"*20}')
+    #         print(f'BERT score precision is {np.mean(np.array(bert_["precision"]))}, recall is {np.mean(np.array(bert_["recall"]))}, and F1 is {np.mean(np.array(bert_["f1"]))}.')

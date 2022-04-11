@@ -18,7 +18,7 @@ from sklearn.utils import shuffle, resample
 import wandb
 
 
-class Trainer(object):
+class TransformerTrainer(object):
 
     def __init__(self, configs):
         
@@ -59,7 +59,7 @@ class Trainer(object):
         self.model = Transformer(self.configs)
         self.model.to(self.device)
         print(f'{"-"*20} Model Description {"-"*20}')
-        print(f'Set model as {self._count_parameters(self.model)} trainable parameters')
+        print(f'Set model as total {self._count_parameters(self.model)} trainable parameters')
         print(f'{"-"*40}')
     
     def main_inference(self, dataloader, test_split, interpolate_latent=True):
@@ -68,10 +68,11 @@ class Trainer(object):
         print(f'{"-"*20} Perform inference {"-"*20}')
 
         pred_idx = []
-        first_n = 40
-        latent_samples = 5
+        first_n = 50
+        latent_samples = 10
         for idx, (src, trg) in enumerate(tqdm(dataloader)):      
-            trg_ = self.model.inference(self.model.src_encoder, self.model.trg_decoder, src, self.configs.max_len)
+            trg_ = self.model.inference(self.model.src_encoder, self.model.trg_decoder, src, 
+                self.model.src_emb, self.model.trg_emb, self.configs.max_len)
             for trg in trg_:
                 pred_idx.append(trg.cpu())
 
@@ -84,10 +85,10 @@ class Trainer(object):
         if interpolate_latent:
             latent_sample_ = [[index_to_token(remove_bos_eos(s)) for s in sets] for sets in latent_sample_idx]
         
-        if interpolate_latent:
-            table = wandb.Table(columns=['id', 'pred', 'ref', 'ls'])
-        else:
-            table = wandb.Table(columns=['id', 'pred', 'ref'])
+        # if interpolate_latent:
+        #     table = wandb.Table(columns=['id', 'pred', 'ref', 'ls'])
+        # else:
+        #     table = wandb.Table(columns=['id', 'pred', 'ref'])
 
         print(f'{"-"*20} Calculate Final Results {"-"*20}')
         calculate_bound(test_, test_split, True, True, True)
@@ -103,7 +104,7 @@ class Trainer(object):
                     print(f'Reference: {stringify(reff)}')
                 for latent in latent_sample_[index]:
                     print(f'Latent Sample: {stringify(latent)}')
-                table.add_data(index, stringify(test__[index]), [stringify(reff) for reff in ref], [stringify(latent) for latent in latent_sample_[index]])
+                # table.add_data(index, stringify(test__[index]), [stringify(reff) for reff in ref], [stringify(latent) for latent in latent_sample_[index]])
             print(f'{"-"*40}')
         else:
             for index, _ in enumerate(test__):
@@ -113,10 +114,10 @@ class Trainer(object):
                 ref = test_split[index][1:]
                 for reff in ref:
                     print(f'Reference: {stringify(reff)}')
-                table.add_data(index, stringify(test__[index]), [stringify(reff) for reff in ref])
+                # table.add_data(index, stringify(test__[index]), [stringify(reff) for reff in ref])
             print(f'{"-"*40}')
         
-        wandb.log({'Table': table})
+        # wandb.log({'Table': table})
         print(f'{"-"*20} Inference done {"-"*20}')
         
     def _latent_interpolate(self, dataloader, first_n, size):
@@ -127,7 +128,8 @@ class Trainer(object):
                 for index, _ in enumerate(src):
                     temp = []
                     for j in range(size):
-                        _, latent_, _ = self.model.encode_sample_decode(self.model.src_encoder, self.model.trg_decoder, src[index].unsqueeze(0), self.configs.gumbel_max, 0.001)
+                        _, latent_, _ = self.model.encode_sample_decode(self.model.src_encoder, self.model.trg_decoder, 
+                            src[index].unsqueeze(0), self.model.src_emb, self.model.trg_emb, True, 0.001)
                         temp.append(latent_.squeeze().cpu())
                     latent_sample_idx.append(temp)
                     counter += 1
@@ -235,75 +237,7 @@ class Trainer(object):
         print(f'Seq2seq experiment done in {time.time() - EXP_START}s.')
         print(f'{"-"*40}')
 
-        self.main_inference(self.test_data, self.test_split, interpolate_latent=False)
-
-    def main_vae(self):
-        lm_dir = self.configs.lm_dir
-        lm_id = self.configs.lm_id
-
-        model_dir = self.configs.vae_dir
-        max_epoch = self.configs.vae_max_epoch
-        lr = self.configs.vae_lr
-        grad_clip = self.configs.grad_clip
-        seed = self.configs.seed
-        experiment_id = self.configs.vae_id
-
-        if self.configs.use_pretrain_lm:
-            self._load_model(self.model, lm_dir, lm_id)
-        
-        beta_factor = 1
-        # temperature guildine from https://sassafras13.github.io/GumbelSoftmax/
-        if self.configs.fixed_temperature:
-            high_temp = 0.1
-            low_temp = 0.1
-        else:
-            high_temp = 10
-            low_temp = 0.01
-        temperature = list(np.linspace(high_temp, low_temp, max_epoch))
-
-        print(f'{"-"*20} Initialise VAE experiment {"-"*20}')
-        print(f'Use model directory {model_dir}')
-        print(f'Experiment run for max {max_epoch} epochs')
-        print(f'Learning rate set as {lr}')
-        print(f'Use gradient clip of {grad_clip}')
-        print(f'Use seed of {seed}')
-        print(f'Experiment id as {experiment_id}')
-        
-        if self.configs.use_pretrain_lm:
-            print(f'Use pre-trained LM from dir {lm_dir} and id {lm_id}')
-        else:
-            print(f'No pre-trained LM used')
-
-        print(f'Total model parameters {self._count_parameters(self.model)-self._count_parameters(self.model.prior)} ')
-        print(f'Set high temperate as {high_temp} amd low temperature as {low_temp}')
-        print(f'Training with beta factor of {beta_factor}')
-        print(f'{"-"*40}')
-
-        
-        self._set_experiment_seed(seed)
-        self.model.src_encoder.apply(self._xavier_initialize)
-        self.model.trg_decoder.apply(self._xavier_initialize)
-        self.model.trg_encoder.apply(self._xavier_initialize)
-        self.model.src_decoder.apply(self._xavier_initialize)
-        params = list(self.model.src_encoder.parameters()) + list(self.model.trg_decoder.parameters()) + list(self.model.trg_encoder.parameters()) + list(self.model.src_decoder.parameters())
-        optimizer = torch.optim.Adam(params, lr=lr)
-        
-        EXP_START = time.time()
-        best_valid_loss = float('inf')
-        for epoch in range(max_epoch):
-            train_loss = self._train_vae(self.un_data, optimizer, grad_clip, temperature[epoch], beta_factor)
-            valid_loss = self._evaluate_vae(self.valid_data, temperature[epoch], beta_factor)
-            print(f'{"-"*20} Epoch {epoch + 1}/{max_epoch} training done {"-"*20}') 
-            if valid_loss < best_valid_loss:
-                best_valid_loss = valid_loss 
-                self._save_model(self.model, model_dir, experiment_id)
-                print(f'Save model in epoch {epoch + 1}.')
-        
-        print(f'{"-"*20} Retrieve best model for testing {"-"*20}')
-        self._load_model(self.model, model_dir, experiment_id)
-        self.model.to(self.device)
-        valid_loss = self._evaluate_vae(self.test_data, low_temp)
-        print(f'VAE experiment done in {time.time() - EXP_START}s.')
+        self.main_inference(self.test_data, self.test_split, interpolate_latent=True)
 
     def main_semi_supervised(self):
 
@@ -402,6 +336,7 @@ class Trainer(object):
     def _batchify(self, batch):
         
         src_list, trg_list = [], []
+        
         for sets in batch:
             src = torch.tensor([self.bos_id] + sets[0] + [self.eos_id], dtype=torch.int64)
             trg = torch.tensor([self.bos_id] + sets[1] + [self.eos_id], dtype=torch.int64)
@@ -409,6 +344,7 @@ class Trainer(object):
             trg_list.append(trg)
         src_ = pad_sequence(src_list, batch_first=True, padding_value=self.pad_id)
         trg_ = pad_sequence(trg_list, batch_first=True, padding_value=self.pad_id)
+
         return src_.to(self.device), trg_.to(self.device)
 
     def _build_quora_data(self, un_train_size, train_size, valid_size, test_size):
@@ -555,9 +491,9 @@ class Trainer(object):
             optimizer.zero_grad()
             
             src_ = self.model.encode_and_decode(self.model.trg_encoder, self.model.src_decoder,
-                trg, src[:,:-1])
+                trg, src[:,:-1], self.model.trg_emb, self.model.src_emb)
             trg_ = self.model.encode_and_decode(self.model.src_encoder, self.model.trg_decoder,
-                src, trg[:,:-1])
+                src, trg[:,:-1], self.model.src_emb, self.model.trg_emb)
 
             loss_src = self.model._reconstruction_loss(src_, src[:, 1:])
             loss_trg = self.model._reconstruction_loss(trg_, trg[:, 1:])
@@ -596,9 +532,9 @@ class Trainer(object):
         for idx, (src, trg) in enumerate(tqdm(dataloader)):
             
             src_ = self.model.encode_and_decode(self.model.trg_encoder, self.model.src_decoder,
-                trg, src[:,:-1])
+                trg, src[:,:-1], self.model.trg_emb, self.model.src_emb)
             trg_ = self.model.encode_and_decode(self.model.src_encoder, self.model.trg_decoder,
-                src, trg[:,:-1])
+                src, trg[:,:-1], self.model.src_emb, self.model.trg_emb)
 
             loss_src = self.model._reconstruction_loss(src_, src[:, 1:])
             loss_trg = self.model._reconstruction_loss(trg_, trg[:, 1:])
@@ -630,12 +566,12 @@ class Trainer(object):
             # trg_, trg_logit = self.model.encode_sample_decode(self.model.src_encoder, self.model.trg_decoder, 
                         # src, self.configs.gumbel_max, temperature) 
 
-            trg_, trg_hard, trg_logit = self.model.encode_sample_decode(self.model.src_encoder, 
-                self.model.trg_decoder, src, self.configs.gumbel_max, temperature) 
+            trg_, trg_hard, trg_logit = self.model.encode_sample_decode(self.model.src_encoder, self.model.trg_decoder, 
+                src, self.model.src_emb, self.model.trg_emb, self.configs.gumbel_max, temperature) 
 
             # src__ (B, S-1, V)
             src__ = self.model.encode_and_decode(self.model.trg_encoder, self.model.src_decoder,
-                trg_, src[:,:-1])
+                trg_, src[:,:-1], self.model.trg_emb, self.model.src_emb)
 
             rec_loss = self.model._reconstruction_loss(src__, src[:, 1:])
             
@@ -706,12 +642,12 @@ class Trainer(object):
         for idx, (src, trg) in enumerate(tqdm(dataloader)):
 
             # trg_ (B, S, V)
-            trg_, trg_hard, trg_logit = self.model.encode_sample_decode(self.model.src_encoder, 
-                self.model.trg_decoder, src, self.configs.gumbel_max, temperature) 
-            
+            trg_, trg_hard, trg_logit = self.model.encode_sample_decode(self.model.src_encoder, self.model.trg_decoder, 
+                src, self.model.src_emb, self.model.trg_emb, self.configs.gumbel_max, temperature) 
+
             # src__ (B, S-1, V)
             src__ = self.model.encode_and_decode(self.model.trg_encoder, self.model.src_decoder,
-                trg_, src[:,:-1])
+                trg_, src[:,:-1], self.model.trg_emb, self.model.src_emb)
 
             rec_loss = self.model._reconstruction_loss(src__, src[:, 1:])
             
@@ -733,10 +669,10 @@ class Trainer(object):
             vae_loss = torch.mean(rec_loss) + beta * torch.mean(kl_loss)
 
             src_de = self.model.encode_and_decode(self.model.trg_encoder, self.model.src_decoder,
-                trg, src[:,:-1])
+                trg, src[:,:-1], self.model.trg_emb, self.model.src_emb)
             
             trg_de = self.model.encode_and_decode(self.model.src_encoder, self.model.trg_decoder,
-                src, trg[:,:-1])
+                src, trg[:,:-1], self.model.src_emb, self.model.trg_emb)
 
             loss_src = self.model._reconstruction_loss(src_de, src[:, 1:])
             loss_trg = self.model._reconstruction_loss(trg_de, trg[:, 1:])

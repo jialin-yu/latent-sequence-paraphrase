@@ -15,7 +15,7 @@ def straight_through_softmax(logits):
     y_hard = torch.zeros_like(y).view(-1, shape[-1])
     y_hard.scatter_(1, ind.view(-1, 1), 1)
     y_hard = y_hard.view(*shape)
-    return (y_hard - y).detach() + y
+    return y_hard - y.detach() + y
 
 def straight_through_logits(logits):
     y = logits

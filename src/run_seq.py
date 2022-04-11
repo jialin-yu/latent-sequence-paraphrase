@@ -1,4 +1,4 @@
-from trainer import Trainer
+from trainer_transformer import TransformerTrainer
 from config import Configs
 import argparse
 import torch
@@ -90,7 +90,7 @@ def main():
     args.cuda = torch.cuda.is_available()
 
     configs = Configs(**vars(args))
-    interface = Trainer(configs)
+    interface = TransformerTrainer(configs)
     
     # interface.main_vae()
     interface.main_seq2seq()

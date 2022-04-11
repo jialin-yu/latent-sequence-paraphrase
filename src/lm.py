@@ -2,8 +2,7 @@ from distutils.command.config import config
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from pos_emb import PosEmbedding
-from tok_emb import TokEmbedding
+from emb import Embedding
 
 class LanguageModel(nn.Module):
 
@@ -12,8 +11,8 @@ class LanguageModel(nn.Module):
 
         self.device = configs.device
 
-        self.pos_emb = PosEmbedding(configs)
-        self.tok_emb = TokEmbedding(configs)
+        # self.pos_emb = PosEmbedding(configs)
+        # self.tok_emb = TokEmbedding(configs)
         encoder_layer = nn.TransformerEncoderLayer(d_model=configs.hid_dim, nhead=configs.n_heads, dropout=configs.dropout, batch_first=True)
         self.encoder = nn.TransformerEncoder(encoder_layer, num_layers=configs.n_lays)
         self.dropout = nn.Dropout(configs.dropout)

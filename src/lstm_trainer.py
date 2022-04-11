@@ -18,7 +18,7 @@ from sklearn.utils import shuffle, resample
 import wandb
 
 
-class Trainer(object):
+class LSTMTrainer(object):
 
     def __init__(self, configs):
         
@@ -402,14 +402,20 @@ class Trainer(object):
     def _batchify(self, batch):
         
         src_list, trg_list = [], []
+        src_len, trg_len = [], []
         for sets in batch:
             src = torch.tensor([self.bos_id] + sets[0] + [self.eos_id], dtype=torch.int64)
             trg = torch.tensor([self.bos_id] + sets[1] + [self.eos_id], dtype=torch.int64)
             src_list.append(src)
             trg_list.append(trg)
+            src_len.append(torch.tensor([len(sets[0]) + 2], dtype=torch.int64))
+            trg_len.append(torch.tensor([len(sets[1]) + 2], dtype=torch.int64))
         src_ = pad_sequence(src_list, batch_first=True, padding_value=self.pad_id)
         trg_ = pad_sequence(trg_list, batch_first=True, padding_value=self.pad_id)
-        return src_.to(self.device), trg_.to(self.device)
+        src_l = pad_sequence(src_len, batch_first=True).squeeze(1)
+        trg_l = pad_sequence(trg_len, batch_first=True).squeeze(1)
+        # print(src_l.size())
+        return src_.to(self.device), trg_.to(self.device), src_l.to(self.device), trg_l.to(self.device)
 
     def _build_quora_data(self, un_train_size, train_size, valid_size, test_size):
         
@@ -551,13 +557,13 @@ class Trainer(object):
         start_time = time.time()
 
         log_inter = len(dataloader) // 3
-        for idx, (src, trg) in enumerate(tqdm(dataloader)):
+        for idx, (src, trg, src_l, trg_l) in enumerate(tqdm(dataloader)):
             optimizer.zero_grad()
             
             src_ = self.model.encode_and_decode(self.model.trg_encoder, self.model.src_decoder,
-                trg, src[:,:-1])
+                trg, src[:,:-1], trg_l, src_l, self.model.trg_emb, self.model.src_emb)
             trg_ = self.model.encode_and_decode(self.model.src_encoder, self.model.trg_decoder,
-                src, trg[:,:-1])
+                src, trg[:,:-1], src_l, trg_l, self.model.src_emb, self.model.trg_emb)
 
             loss_src = self.model._reconstruction_loss(src_, src[:, 1:])
             loss_trg = self.model._reconstruction_loss(trg_, trg[:, 1:])
@@ -593,12 +599,12 @@ class Trainer(object):
         epoch_loss = 0
         start_time = time.time()
         
-        for idx, (src, trg) in enumerate(tqdm(dataloader)):
+        for idx, (src, trg, src_l, trg_l) in enumerate(tqdm(dataloader)):
             
             src_ = self.model.encode_and_decode(self.model.trg_encoder, self.model.src_decoder,
-                trg, src[:,:-1])
+                trg, src[:,:-1], trg_l, src_l, self.model.trg_emb, self.model.src_emb)
             trg_ = self.model.encode_and_decode(self.model.src_encoder, self.model.trg_decoder,
-                src, trg[:,:-1])
+                src, trg[:,:-1], src_l, trg_l, self.model.src_emb, self.model.trg_emb)
 
             loss_src = self.model._reconstruction_loss(src_, src[:, 1:])
             loss_trg = self.model._reconstruction_loss(trg_, trg[:, 1:])

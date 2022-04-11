@@ -5,6 +5,7 @@ import torch.nn.functional as F
 
 from encoder import RNNEncoder
 from decoder import RNNDecoder
+from emb import Embedding
 
 from lm import LanguageModel
 
@@ -27,6 +28,9 @@ class LSTM(nn.Module):
         
         self.trg_encoder = RNNEncoder(configs)
         self.src_decoder = RNNDecoder(configs)
+
+        self.src_emb = Embedding(configs, use_scale=False)
+        self.trg_emb = Embedding(configs, use_scale=False)
         
         self.loss = nn.CrossEntropyLoss(ignore_index=self.pad_id, reduction="none")
 
@@ -163,7 +167,7 @@ class LSTM(nn.Module):
         assert dec_temp_hard.size() == src.size()
         return dec_temp, dec_temp_hard, final_output
     
-    def encode_and_decode(self, encoder, decoder, src, trg):
+    def encode_and_decode(self, encoder, decoder, src, trg, src_len, trg_len, src_emb, trg_emb):
         '''
         INPUT:
         src (B, S) i; <bos> x <eos>
@@ -171,19 +175,9 @@ class LSTM(nn.Module):
 
         Return: (B, T-1, V) y_ <eos>
         '''
-
-        if len(src.size()) == 2:
-            # src_pm, trg_pm = self._get_padding_mask(src, trg)
-            # _, trg_m, trg_src_m = self._get_causal_mask(src, trg)
-            # enc_src = encoder.encode(src, None, src_pm)
-            hidden, cell = encoder.encode(src)
-            # output, hidden, cell = decoder.decode(src, hidden, cell)
-        else:
-            src_hard = torch.argmax(src, dim=2)
-            # src_pm, trg_pm = self._get_padding_mask(src_hard, trg)
-            # _, trg_m, trg_src_m = self._get_causal_mask(src_hard, trg)
-            hidden, cell = encoder.encode(src_hard)
-            # output, hidden, cell = decoder(src, hidden, cell)
+        
+        emb_src = src_emb(src)
+        hidden, cell = encoder.encode(emb_src, src_len)
 
         B, T = trg.size()
         outputs = torch.zeros(B, T, self.vocab_size).to(self.device)
@@ -191,10 +185,10 @@ class LSTM(nn.Module):
 
         for t in range(T):
 
-            input = trg[:, t]
+            emb_trg = trg_emb(trg[:, t].unsqueeze(1))
             #insert input token embedding, previous hidden and previous cell states
             #receive output tensor (predictions) and new hidden and cell states
-            output, hidden, cell = decoder.decode(input, hidden, cell)
+            output, hidden, cell = decoder.decode(emb_trg, hidden, cell)
             
             #place predictions in a tensor holding predictions for each token
             outputs[:, t] = output
