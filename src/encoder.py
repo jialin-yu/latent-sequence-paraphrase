@@ -1,7 +1,7 @@
 import torch.nn as nn
 import torch
 from pos_emb import PosEmbedding
-from tok_emb import TokEmbedding
+from tok_emb import TokEmbedding, Embedding
 
 class TransformerEncoder(nn.Module):
     def __init__(self, configs):
@@ -28,29 +28,23 @@ class TransformerEncoder(nn.Module):
         '''
         return self.encoder(self.pos_emb(self.tok_emb(x)), x_m, x_pm) 
 
-class Seq2SeqEncoder(nn.Module):
+class RNNEncoder(nn.Module):
     def __init__(self, configs):
         super().__init__()
         
         self.device = configs.device
-        self.hid_dim = configs.hid_dim
-        self.n_layers = 2
-        self.dropout = 0.3
-        self.embedding = nn.Embedding(configs.vocab_size, configs.hid_dim)
-        self.rnn = nn.LSTM(configs.hid_dim, configs.hid_dim, self.n_layers, dropout = self.dropout)
-        self.dropout = nn.Dropout(self.dropout)
+        self.tok_emb = Embedding(configs)
+        self.encoder = nn.LSTM(configs.hid_dim, configs.hid_dim, configs.n_lays, dropout=configs.dropout, batch_first=True)
+        self.dropout = nn.Dropout(configs.dropout)
 
     def encode(self, x):
         '''
         INPUT: 
-        
         x (B, S); <bos> x <eos>
-        x_m (S, S) == None 
-        x_pm (B, S)
 
         RETURN: 
         x_ (B, S, H); <bos> x_ <eos> 
         '''
-        embedded = self.dropout(self.embedding(x))
-        outputs, (hidden, cell) = self.rnn(embedded)
+        embedded = self.dropout(self.tok_emb(x))
+        outputs, (hidden, cell) = self.encoder(embedded)
         return hidden, cell

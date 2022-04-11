@@ -7,17 +7,17 @@ class Configs(object):
         self.mscoco_fp_train = '../.data/annotations/captions_train2014.json'
         self.mscoco_fp_test = '../.data/annotations/captions_val2014.json'
         
-        self.quora_max_len = 20
+        self.quora_max_len = 25
         self.quora_train_max = 115000
         self.quora_valid = 3000
-        self.quora_test = 30000
+        self.quora_test = 20000
         self.qu_batch_size = 512
         
-        self.mscoco_max_len = 20
+        self.mscoco_max_len = 25
         self.mscoco_train_max = 115000
         self.mscoco_valid = 3000
         self.mscoco_test = 5000
-        self.ms_batch_size = 512
+        self.ms_batch_size = 256
 
         self.lm_dir = '../model/lm/'
         self.semi_dir = '../model/semi/'

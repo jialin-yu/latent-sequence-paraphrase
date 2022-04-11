@@ -13,33 +13,14 @@ source ../env/bin/activate
 module load cuda/11.3
 
 python run_seq.py \
-    --data='quora' \
-    --seed=1000 \
-    --un_train_size=20000 \
-    --train_size=20000 \
-    --seq2seq_lr=0.0001 \
-    --n_lays=6 \
-    --seq2seq_max_epoch=30 \
+    --data='mscoco' \
+    --seed=8000 \
+    --un_train_size=115000 \
+    --train_size=115000 \
+    --seq2seq_lr=0.001 \
+    --n_lays=2 \
+    --seq2seq_max_epoch=20 \
     --duo=True \
-
-python run_seq.py \
-    --data='quora' \
-    --seed=2000 \
-    --un_train_size=20000 \
-    --train_size=20000 \
-    --seq2seq_lr=0.0001 \
-    --n_lays=6 \
-    --seq2seq_max_epoch=30 \
-    --duo=True \
-
-python run_seq.py \
-    --data='quora' \
-    --seed=3000 \
-    --un_train_size=20000 \
-    --train_size=20000 \
-    --seq2seq_lr=0.0001 \
-    --n_lays=6 \
-    --seq2seq_max_epoch=30 \
-    --duo=True \
+    --dropout=0.3 \
 
 

@@ -1,216 +1,101 @@
+from lstm_trainer import Trainer
+from config import Configs
+import argparse
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import random
 
-from encoder import Seq2SeqEncoder
-from decoder import Seq2SeqDecoder
 
-from sample import straight_through_softmax, gumbel_softmax
+def main():
+    '''
+    if batch_loss: penalty on long sequence; if not: sequence length does not matter
+    if hard: use catergorical representation; if not: use smooth representation 
+    '''
+
+    def str2bool(v):
+        if isinstance(v, bool):
+            return v
+        if v.lower() in ('yes', 'true', 't', 'y', '1'):
+            return True
+        elif v.lower() in ('no', 'false', 'f', 'n', '0'):
+            return False
+        else:
+            raise argparse.ArgumentTypeError('Boolean value expected.')
     
-
-class Seq2Seq(nn.Module):
-
-    def __init__(self, configs):
-        super(Seq2Seq, self).__init__()
-        
-        self.device = configs.device
-        self.pad_id = configs.pad_id
-        self.vocab_size = configs.vocab_size
-
-        self.encoder = Seq2SeqEncoder(configs)
-        self.decoder = Seq2SeqDecoder(configs)
-        
-        self.loss = nn.CrossEntropyLoss(ignore_index=self.pad_id, reduction="none")
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        '-d', '--data', type=str, default='quora')
+    parser.add_argument(
+        '-utrs', '--un_train_size', type=int, default=20000)
+    parser.add_argument(
+        '-trs', '--train_size', type=int, default=20000)
     
-    def forward(self, src, trg, teacher_forcing_ratio = 0.5):
-        
-        batch_size = trg.shape[1]
-        trg_len = trg.shape[0]
-        trg_vocab_size = self.decoder.output_dim
-
-        outputs = torch.zeros(trg_len, batch_size, trg_vocab_size).to(self.device)
-
-        hidden, cell = self.encoder.encode(src)
-
-        input = trg[0,:]
-
-        for t in range(1, trg_len):
-
-            output, hidden, cell = self.decoder.decode(input, hidden, cell)
-            outputs[t] = output
-            teacher_force = random.random() < teacher_forcing_ratio
-            top1 = output.argmax(1)
-            input = trg[t] if teacher_force else top1
-        
-        return outputs
-
-
-
-    def _get_causal_mask(self, src, trg):
-        '''
-        Generate Causal Mask
-        
-        INPUT:
-        src (B, S)
-        trg (B, T)
-
-        OUTPUT:
-        [ x1 x2 x3 ] ==> [ 0 -inf -inf ]
-                         [ 0   0  -inf ]
-                         [ 0   0    0  ]
-
-        src_m (S, S)
-        trg_m (T, T)
-        trg_src_m (T, S)
-        '''
-
-        _, S = src.size()
-        _, T = trg.size()
-
-        src_m = torch.triu(torch.ones(S, S) * float('-inf'), diagonal=1).to(self.device)
-        trg_m = torch.triu(torch.ones(T, T) * float('-inf'), diagonal=1).to(self.device)
-        trg_src_m = torch.triu(torch.ones(T, S) * float('-inf'), diagonal=1).to(self.device)
-
-        return src_m, trg_m, trg_src_m
-
-    def _get_padding_mask(self, src, trg):
-        '''
-        Generate Padding Mask
-
-        INPUT:
-        src (B, S)
-        trg (B, T)
-
-        OUTPUT: 
-        [ x1 x2 x3 <pad> <pad> ] ==> [ 0 0 0 1 1 ]
-        src_pm (B, S)
-        trg_pm (B, T)
-        '''
-        _, S = src.size()
-        _, T = trg.size()
-
-        src_pm = (src == self.pad_id).to(self.device)
-        trg_pm = (trg == self.pad_id).to(self.device)
-
-        return src_pm, trg_pm
-
-    def decode_lm(self, model, src):
-        '''
-        INPUT:
-        src (B, S-1); <bos> x
-        src_emb (B, S-1, H); <bos> x
-        RETURN:
-        output (B, S-1, V) x_ <eos>
-        '''
-        src_m, _, _ = self._get_causal_mask(src, src)
-        src_pm, _ = self._get_padding_mask(src, src)
-        output = model.decode(src, src_m, src_pm)
-        return output
-
-    def encode_sample_decode(self, encoder, decoder, src, gumbel_max=False, temperature=None):
-        '''
-        Encode and decode for latent variable 
-
-        With gumbel softmax sampling
-        https://arxiv.org/pdf/1611.01144.pdf
-        https://arxiv.org/pdf/1611.00712.pdf
-        
-        And straight through (hard/soft)
-        https://arxiv.org/pdf/1308.3432.pdf
-
-        if gumbel_max, temperature is required
-        
-        INPUT:
-        src (B, S); <bos> x <eos>
-
-        RETURN: 
-        trg_ (B, T, V) <bos> y_ <eos>
-        trg_logits (B, T-1, V) y_ <eos>
-        '''
-        _, T = src.size()
-        
-        src_pm, _ = self._get_padding_mask(src, src)
-        enc_src = encoder.encode(src, None, src_pm)
-        dec_temp = src[:, 0].unsqueeze(1).detach()
-        # dec_temp= F.one_hot(src, self.vocab_size)[:, 0].unsqueeze(1).double().detach() # B, 1, V
-
-        for i in range(T-1):
-
-            _, trg_m, trg_src_m = self._get_causal_mask(src, dec_temp)
-            _, trg_pm = self._get_padding_mask(src, dec_temp)
-
-            dec_out = decoder.decode(dec_temp, enc_src, trg_m, trg_src_m, trg_pm, src_pm)
-                
-            if gumbel_max:
-                trg_new = torch.argmax(gumbel_softmax(dec_out, temperature), dim=2)[:, -1].unsqueeze(1).detach()
-                dec_temp = torch.cat((dec_temp, trg_new), dim=1)
-            else:
-                trg_new = torch.argmax(straight_through_softmax(dec_out), dim=2)[:, -1].unsqueeze(1).detach()
-                dec_temp = torch.cat((dec_temp, trg_new), dim=1)
-            
-        assert dec_temp.size() == src.size()
-        return dec_temp, dec_out
+    parser.add_argument(
+        '-lh', '--latent_hard', type=str2bool, default=False)
     
-    def encode_and_decode(self, encoder, decoder, src, trg):
-        '''
-        INPUT:
-        src (B, S) i; <bos> x <eos>
-        trg (B, T-1) <bos> y
-
-        Return: (B, T-1, V) y_ <eos>
-        '''
-
-        src_pm, trg_pm = self._get_padding_mask(src, trg)
-        _, trg_m, trg_src_m = self._get_causal_mask(src, trg)
-        enc_src = encoder.encode(src, None, src_pm)
-        dec_out = decoder.decode(trg, enc_src, trg_m, trg_src_m, trg_pm, src_pm)
-        
-        return dec_out
-
-    def inference(self, encoder, decoder, src, max_len=150):
-        '''
-        INPUT:
-        src (B, S) <bos> x <eos>
-
-        RETURN: 
-        trg_ (B, max_len) <bos> y_ <eos>
-        '''
-        
-        src_pm, _ = self._get_padding_mask(src, src)
-        enc_src = encoder.encode(src, None, src_pm)
-        dec_temp= src[:, 0].unsqueeze(1) # B, 1
-
-        for i in range(max_len-1):
-
-            _, trg_m, trg_src_m = self._get_causal_mask(src, dec_temp)
-            _, trg_pm = self._get_padding_mask(src, dec_temp)
-
-            dec_out = decoder.decode(dec_temp, enc_src, trg_m, trg_src_m, trg_pm, src_pm)
-            dec_out_ = torch.argmax(dec_out, dim=2)[:, -1].unsqueeze(1)
-            dec_temp = torch.cat((dec_temp, dec_out_), dim=1)
-        
-        return dec_temp
+    parser.add_argument(
+        '-gum', '--gumbel_max', type=str2bool, default=True)
+    parser.add_argument(
+        '-ft', '--fixed_temperature', type=str2bool, default=False)
     
-    def _reconstruction_loss(self, src, trg):
-        '''
-        Calculate reconstruction loss
-        src: (B, T, V)  xxxx <eos>
-        trg: (B, T) xxxx <eos>
-        return loss in (B*T)
-        '''
+    parser.add_argument(
+        '-plm', '--use_pretrain_lm', type=str2bool, default=True)
 
-        B, _, V = src.size()
-        return self.loss(src.contiguous().view(-1, V), trg.contiguous().view(-1))
+    parser.add_argument(
+        '-up', '--use_pseudo', type=str2bool, default=False)
+
+    # LM experiment
+    parser.add_argument(
+        '-lmdir', '--lm_dir', type=str, default='../model/lm/')
+    parser.add_argument(
+        '-lmme', '--lm_max_epoch', type=int, default=15)
+    parser.add_argument(
+        '-lmlr', '--lm_lr', type=float, default=1e-4)
+
+    parser.add_argument(
+        '-vaedir', '--vae_dir', type=str, default='../model/vae/')
+    parser.add_argument(
+        '-vaeme', '--vae_max_epoch', type=int, default=15)
+    parser.add_argument(
+        '-vaelr', '--vae_lr', type=float, default=1e-4)
+
+    parser.add_argument(
+        '-seq2seqdir', '--seq2seq_dir', type=str, default='../model/seq2seq/')
+    parser.add_argument(
+        '-seq2seqme', '--seq2seq_max_epoch', type=int, default=10)
+    parser.add_argument(
+        '-seq2seqlr', '--seq2seq_lr', type=float, default=1e-4)
+    parser.add_argument(
+        '-duo_train', '--duo', type=str2bool, default=False)
+    parser.add_argument(
+        '-adv_train', '--adv', type=str2bool, default=False)
+
+    parser.add_argument(
+        '-semidir', '--semi_dir', type=str, default='../model/semi/')
+    parser.add_argument(
+        '-semime', '--semi_max_epoch', type=int, default=15)
+    parser.add_argument(
+        '-semilr', '--semi_lr', type=float, default=1e-4)
+
+    parser.add_argument(
+        '-hdm', '--hid_dim', type=int, default=512)
+    parser.add_argument(
+        '-nh', '--n_heads', type=int, default=8)
+    parser.add_argument(
+        '-nl', '--n_lays', type=int, default=6)
+    parser.add_argument(
+        '-dp', '--dropout', type=float, default=0.1)
+    parser.add_argument(
+        '-s', '--seed', type=int, default=1234)
+
+    args = parser.parse_args()
+    args.cuda = torch.cuda.is_available()
+
+    configs = Configs(**vars(args))
+    interface = Trainer(configs)
     
-    def _KL_loss(self, q, p):
-        '''
-        Calculate kl divergence loss between q and p 
-        KL(q|p) = -E_{q}[\log(p)-\log(q)]
-        q: (B, T, V) xxxx <eos> 
-        p: (B, T, V)  xxxx <eos>
+    # interface.main_vae()
+    interface.main_seq2seq()
+    # interface.main_semi_supervised()
 
-        Returns: loss in (B*T)
-        '''
-        q_ = torch.argmax(q, dim=2)
-        return self._reconstruction_loss(p, q_) - self._reconstruction_loss(q, q_)
+
+if __name__ == "__main__":
+    main()

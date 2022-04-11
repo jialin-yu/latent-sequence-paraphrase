@@ -130,7 +130,7 @@ def calculate_bound(pred_set, reference_set, bleu=False, rouge=False, inference=
         refer = [[s_ for s_ in s[1:]] for s in reference_set]
         # refer = [[s[1:-1]] for s in reference_set]
 
-        bleu = bleu_metric.compute(predictions=pred, references=refer)
+        bleu = bleu_metric.compute(predictions=pred, references=refer, smooth=True)
         # nltk_blue = corpus_bleu(list_of_references=refer, hypotheses=pred)
 
         pred = shuffle_pred_set

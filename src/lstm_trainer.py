@@ -10,7 +10,7 @@ import random
 import numpy as np
 import math
 import os
-from transformer import Transformer
+from lstm import LSTM
 from sample import straight_through_softmax
 
 from pipeline import index_to_token, remove_bos_eos, stringify, bert_tokenizer
@@ -56,7 +56,7 @@ class Trainer(object):
             print(f'Use {self.configs.un_train_size} unsupervised data; {self.configs.train_size} training data; {self.configs.mscoco_valid} validation data and {self.configs.mscoco_test} testing data.')
         print(f'{"-"*40}')
 
-        self.model = Transformer(self.configs)
+        self.model = LSTM(self.configs)
         self.model.to(self.device)
         print(f'{"-"*20} Model Description {"-"*20}')
         print(f'Set model as {self._count_parameters(self.model)} trainable parameters')
@@ -127,7 +127,7 @@ class Trainer(object):
                 for index, _ in enumerate(src):
                     temp = []
                     for j in range(size):
-                        _, latent_, _ = self.model.encode_sample_decode(self.model.src_encoder, self.model.trg_decoder, src[index].unsqueeze(0), self.configs.gumbel_max, 0.001)
+                        _, latent_, _ = self.model.encode_sample_decode(self.model.src_encoder, self.model.trg_decoder, src[index].unsqueeze(0), self.configs.gumbel_max, 0.01)
                         temp.append(latent_.squeeze().cpu())
                     latent_sample_idx.append(temp)
                     counter += 1
