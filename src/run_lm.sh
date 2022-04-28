@@ -12,14 +12,8 @@
 source ../env/bin/activate
 module load cuda/11.3
 
-python seq2seq.py \
+python run_lm.py \
     --data='quora' \
-    --seed=6000 \
-    --un_train_size=50000 \
-    --train_size=50000 \
-    --seq2seq_lr=0.001 \
-    --n_lays=2 \
-    --seq2seq_max_epoch=15 \
-    --duo=True \
-    --dropout=0.5 \
-
+    
+python run_lm.py \
+    --data='mscoco' \

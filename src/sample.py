@@ -22,7 +22,7 @@ def straight_through_logits(logits):
     shape = logits.size()
     mask = F.one_hot(torch.argmax(logits, dim=-1), shape[-1])
     y_hard = mask*logits
-    return (y_hard - y).detach() + y
+    return y_hard - y.detach() + y
 
 def sample_gumbel(shape, eps=1e-20):
     U = torch.rand(shape).cuda()

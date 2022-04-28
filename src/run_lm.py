@@ -5,10 +5,6 @@ import torch
 
 
 def main():
-    '''
-    if batch_loss: penalty on long sequence; if not: sequence length does not matter
-    if hard: use catergorical representation; if not: use smooth representation 
-    '''
 
     def str2bool(v):
         if isinstance(v, bool):
@@ -23,39 +19,17 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         '-d', '--data', type=str, default='quora')
+    
     parser.add_argument(
         '-utrs', '--un_train_size', type=int, default=20000)
     parser.add_argument(
         '-trs', '--train_size', type=int, default=20000)
-    
-    parser.add_argument(
-        '-lh', '--latent_hard', type=str2bool, default=False)
-    
     parser.add_argument(
         '-gum', '--gumbel_max', type=str2bool, default=True)
     parser.add_argument(
         '-ft', '--fixed_temperature', type=str2bool, default=False)
-    
-    parser.add_argument(
-        '-plm', '--use_pretrain_lm', type=str2bool, default=True)
-
-    parser.add_argument(
-        '-up', '--use_pseudo', type=str2bool, default=False)
-
+        
     # LM experiment
-    parser.add_argument(
-        '-lmdir', '--lm_dir', type=str, default='../model/lm/')
-    parser.add_argument(
-        '-lmme', '--lm_max_epoch', type=int, default=15)
-    parser.add_argument(
-        '-lmlr', '--lm_lr', type=float, default=1e-4)
-
-    parser.add_argument(
-        '-vaedir', '--vae_dir', type=str, default='../model/vae/')
-    parser.add_argument(
-        '-vaeme', '--vae_max_epoch', type=int, default=15)
-    parser.add_argument(
-        '-vaelr', '--vae_lr', type=float, default=1e-4)
 
     parser.add_argument(
         '-seq2seqdir', '--seq2seq_dir', type=str, default='../model/seq2seq/')
@@ -81,10 +55,9 @@ def main():
 
     configs = Configs(**vars(args))
     interface = Trainer(configs)
-    
     # interface.main_vae()
-    interface.main_seq2seq()
-    # interface.main_semi_supervised()
+    # interface.main_seq2seq()
+    interface.main_lm()
 
 
 if __name__ == "__main__":

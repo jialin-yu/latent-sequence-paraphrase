@@ -1,41 +1,35 @@
 from transformers import BertTokenizer
 
-bert_tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
-# set bos and eos token as cls and sep
-bert_tokenizer.bos_token = bert_tokenizer.cls_token
-bert_tokenizer.eos_token = bert_tokenizer.sep_token
+tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+tokenizer.bos_token = tokenizer.cls_token
+tokenizer.eos_token = tokenizer.sep_token
 
 
-def tokenizer(string):
-    return bert_tokenizer.tokenize(string)
+def tokenize(string):
+    return tokenizer.tokenize(string)
 
 def stringify(token):
-    return bert_tokenizer.convert_tokens_to_string(token)
+    return tokenizer.convert_tokens_to_string(token)
 
 def token_to_index(token):
-    return bert_tokenizer.convert_tokens_to_ids(token)
+    return tokenizer.convert_tokens_to_ids(token)
 
 def index_to_token(index):
-    return bert_tokenizer.convert_ids_to_tokens(index)
+    return tokenizer.convert_ids_to_tokens(index)
 
-def remove_bos_eos(index):
-    clear_idx = []
-    for idx in index:
-        if idx == bert_tokenizer.eos_token_id:
-            return remove_pad(clear_idx)
-        else:
-            if idx == bert_tokenizer.bos_token_id:
-                continue
-            else:
-                clear_idx.append(idx)
+def decode_index_to_string(index):
+    clear_idx = clear_index(index)
+    return tokenizer.decode(clear_idx, skip_special_tokens=True)
+
+def index_to_string(index):
+    return stringify(index_to_token(index))
     
-    return remove_pad(clear_idx)
-
-def remove_pad(index):
+def clear_index(index):
     clear_idx = []
     for idx in index:
-        if idx == bert_tokenizer.pad_token_id:
-            continue
+        if idx == tokenizer.eos_token_id:
+            clear_idx.append(idx)
+            return clear_idx
         else:
             clear_idx.append(idx)
     return clear_idx

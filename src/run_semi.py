@@ -1,4 +1,4 @@
-from trainer_transformer import TransformerTrainer
+from trainer_quora import Trainer
 from config import Configs
 import argparse
 import torch
@@ -40,24 +40,6 @@ def main():
         '-plm', '--use_pretrain_lm', type=str2bool, default=True)
 
     parser.add_argument(
-        '-up', '--use_pseudo', type=str2bool, default=False)
-
-    # LM experiment
-    parser.add_argument(
-        '-lmdir', '--lm_dir', type=str, default='../model/lm/')
-    parser.add_argument(
-        '-lmme', '--lm_max_epoch', type=int, default=15)
-    parser.add_argument(
-        '-lmlr', '--lm_lr', type=float, default=1e-4)
-
-    parser.add_argument(
-        '-vaedir', '--vae_dir', type=str, default='../model/vae/')
-    parser.add_argument(
-        '-vaeme', '--vae_max_epoch', type=int, default=15)
-    parser.add_argument(
-        '-vaelr', '--vae_lr', type=float, default=1e-4)
-
-    parser.add_argument(
         '-seq2seqdir', '--seq2seq_dir', type=str, default='../model/seq2seq/')
     parser.add_argument(
         '-seq2seqme', '--seq2seq_max_epoch', type=int, default=10)
@@ -74,27 +56,16 @@ def main():
         '-semilr', '--semi_lr', type=float, default=1e-4)
 
     parser.add_argument(
-        '-hdm', '--hid_dim', type=int, default=512)
-    parser.add_argument(
-        '-nh', '--n_heads', type=int, default=8)
-    parser.add_argument(
-        '-nl', '--n_lays', type=int, default=3)
-    parser.add_argument(
-        '-dp', '--dropout', type=float, default=0.1)
-
-    parser.add_argument(
         '-s', '--seed', type=int, default=1234)
 
     args = parser.parse_args()
     args.cuda = torch.cuda.is_available()
 
     configs = Configs(**vars(args))
-    interface = TransformerTrainer(configs)
-    if configs.use_pretrain_lm == True:
-        interface.main_lm()
+    interface = Trainer(configs)
     # interface.main_vae()
     # interface.main_seq2seq()
-    interface.main_semi_supervised()
+    interface.main_semi()
 
 
 if __name__ == "__main__":
