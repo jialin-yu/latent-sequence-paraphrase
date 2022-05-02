@@ -8,7 +8,7 @@ from decoder import TransformerDecoder
 
 from lm import LanguageModel
 
-from sample import straight_through_softmax, gumbel_softmax_sample
+from sample import gumbel_softmax_topk, gumbel_softmax_topk_
     
 
 class Transformer(nn.Module):
@@ -78,7 +78,191 @@ class Transformer(nn.Module):
 
         return src_pm, trg_pm
 
-    def unsupervised_reconstruction(self, src_idx, temperature):
+    def unsupervised_reconstruction__(self, src_idx, temperature, top_k):
+        '''
+        Unsupervised reconstruction with gumbel softmax sampling 
+        https://arxiv.org/pdf/1611.01144.pdf
+        https://arxiv.org/pdf/1611.00712.pdf
+        
+        INPUT:
+        src_idx (B, S); <bos> x <eos>
+        temperature: float number
+        RETURN: 
+        trg_idx_ (B, S) <bos> y_ <eos>
+        trg_logits (B, S-1, V) y_ <eos>
+        src_logits (B, S-1, V) x_ <eos>
+        '''
+
+        ###############################################
+        # first generate pseudo teacher forcing labels
+        ###############################################
+
+        _, T = src_idx.size()
+
+        src_pm, _ = self._get_padding_mask(src_idx, src_idx)
+        enc_src = self.encoder.encode(src_idx, None, src_pm)
+        # trg_pidx = src_idx[:, 0].unsqueeze(1).detach() # B, 1
+        trg_hard = F.one_hot(src_idx[:, 0].unsqueeze(1), self.vocab_size).detach()
+        trg_soft = F.one_hot(src_idx[:, 0].unsqueeze(1), self.vocab_size).detach()
+        trg_idx = torch.argmax(trg_hard, dim=2).detach()
+
+        for _ in range(self.max_len-1):
+            _, trg_m, trg_src_m = self._get_causal_mask(src_idx, trg_idx)
+            _, trg_pm = self._get_padding_mask(src_idx, trg_idx)
+            trg_out = self.decoder.decode(trg_soft, enc_src, trg_m, trg_src_m, trg_pm, src_pm)
+            hard, soft = gumbel_softmax_topkk(trg_out, temperature, top_k, 1)
+            trg_hard = torch.cat((trg_hard, hard[:, -1].unsqueeze(1)), dim=1).detach() # max_len
+            trg_soft = torch.cat((trg_soft, soft[:, -1].unsqueeze(1)), dim=1).detach() # max_len
+            trg_idx = torch.argmax(trg_hard, dim=2).detach()
+        
+        final_trg = trg_soft
+        final_trg_idx = trg_idx
+        
+        q_trg = final_trg
+        ###############################################
+        # final reconstruct to original labels
+        ###############################################
+
+        src_pm_n, trg_pm_n = self._get_padding_mask(final_trg_idx, src_idx[:, :-1])
+        _, trg_m_n, trg_src_m_n = self._get_causal_mask(final_trg_idx, src_idx[:, :-1])
+
+        enc_src_n = self.encoder.encode(final_trg, None, src_pm_n)
+        dec_out_src = self.decoder.decode(src_idx[:, :-1], enc_src_n, trg_m_n, trg_src_m_n, trg_pm_n, src_pm_n)
+
+        return final_trg_idx, q_trg, dec_out_src
+
+    def unsupervised_reconstruction___(self, src_idx, temperature, top_k):
+        '''
+        Unsupervised reconstruction with gumbel softmax sampling 
+        https://arxiv.org/pdf/1611.01144.pdf
+        https://arxiv.org/pdf/1611.00712.pdf
+        
+        INPUT:
+        src_idx (B, S); <bos> x <eos>
+        temperature: float number
+        RETURN: 
+        trg_idx_ (B, S) <bos> y_ <eos>
+        trg_logits (B, S-1, V) y_ <eos>
+        src_logits (B, S-1, V) x_ <eos>
+        '''
+
+        ###############################################
+        # first generate pseudo teacher forcing labels
+        ###############################################
+
+        _, T = src_idx.size()
+
+        src_pm, _ = self._get_padding_mask(src_idx, src_idx)
+        enc_src = self.encoder.encode(src_idx, None, src_pm)
+        # trg_pidx = src_idx[:, 0].unsqueeze(1).detach() # B, 1
+        trg_soft_idx = F.one_hot(src_idx[:, 0].unsqueeze(1), self.vocab_size).detach()
+
+        for _ in range(self.max_len-1):
+            trg_hard_idx = torch.argmax(trg_soft_idx, dim=2)
+            _, trg_m, trg_src_m = self._get_causal_mask(src_idx, trg_hard_idx)
+            _, trg_pm = self._get_padding_mask(src_idx, trg_hard_idx)
+            trg_out = self.decoder.decode(trg_soft_idx, enc_src, trg_m, trg_src_m, trg_pm, src_pm)
+            trg_prob = F.softmax(trg_out, dim=2)
+            trg_soft_idx = torch.cat((trg_soft_idx, trg_prob[:, -1].unsqueeze(1)), dim=1).detach() # max_len
+
+        pseudo_trg_idx = trg_soft_idx[:, :-1].detach()
+        pseudo_trg_hard_idx= torch.argmax(pseudo_trg_idx, dim=2)
+        _, trg_m, trg_src_m = self._get_causal_mask(src_idx, pseudo_trg_hard_idx)
+        _, trg_pm = self._get_padding_mask(src_idx, pseudo_trg_hard_idx)
+        dec_out_trg = self.decoder.decode(pseudo_trg_idx, enc_src, trg_m, trg_src_m, trg_pm, src_pm) # max_len -1
+
+        ###############################################
+        # then perform sampling based on pseudo labels
+        ###############################################
+        
+        # out_trg_gumbel = F.gumbel_softmax(dec_out_trg, tau=temperature, hard=False)
+        out_trg_gumbel = gumbel_softmax_topk(dec_out_trg, temperature, top_k, 5)
+        trg_input = torch.cat((F.one_hot(src_idx[:, 0].unsqueeze(1), self.vocab_size), out_trg_gumbel), dim=1)
+        trg_idx_ = torch.argmax(trg_input, dim=2)
+        # trg_idx_ = torch.cat((src_idx[:, 0].unsqueeze(1), trg_idx_), dim=1)
+        
+        # assert trg_idx_.size() == src_idx.size()
+        q_trg = out_trg_gumbel
+
+        ###############################################
+        # final reconstruct to original labels
+        ###############################################
+
+        src_pm_n, trg_pm_n = self._get_padding_mask(trg_idx_, src_idx[:, :-1])
+        _, trg_m_n, trg_src_m_n = self._get_causal_mask(trg_idx_, src_idx[:, :-1])
+
+        enc_src_n = self.encoder.encode(trg_input, None, src_pm_n)
+        dec_out_src = self.decoder.decode(src_idx[:, :-1], enc_src_n, trg_m_n, trg_src_m_n, trg_pm_n, src_pm_n)
+
+        return trg_idx_, q_trg, dec_out_src
+
+    def unsupervised_reconstruction(self, src_idx, temperature, top_k):
+        '''
+        Unsupervised reconstruction with gumbel softmax sampling 
+        https://arxiv.org/pdf/1611.01144.pdf
+        https://arxiv.org/pdf/1611.00712.pdf
+        
+        INPUT:
+        src_idx (B, S); <bos> x <eos>
+        temperature: float number
+        RETURN: 
+        trg_idx_ (B, S) <bos> y_ <eos>
+        trg_logits (B, S-1, V) y_ <eos>
+        src_logits (B, S-1, V) x_ <eos>
+        '''
+
+        ###############################################
+        # first generate pseudo teacher forcing labels
+        ###############################################
+
+        _, T = src_idx.size()
+
+        src_pm, _ = self._get_padding_mask(src_idx, src_idx)
+        enc_src = self.encoder.encode(src_idx, None, src_pm)
+        # trg_pidx = src_idx[:, 0].unsqueeze(1).detach() # B, 1
+        trg_soft_idx = F.one_hot(src_idx[:, 0].unsqueeze(1), self.vocab_size).detach()
+
+        for _ in range(T-1):
+            trg_hard_idx = torch.argmax(trg_soft_idx, dim=2)
+            _, trg_m, trg_src_m = self._get_causal_mask(src_idx, trg_hard_idx)
+            _, trg_pm = self._get_padding_mask(src_idx, trg_hard_idx)
+            trg_out = self.decoder.decode(trg_hard_idx, enc_src, trg_m, trg_src_m, trg_pm, src_pm)
+            trg_prob = F.softmax(trg_out, dim=2)
+            trg_soft_idx = torch.cat((trg_soft_idx, trg_prob[:, -1].unsqueeze(1)), dim=1).detach() # max_len
+
+        pseudo_trg_idx = trg_soft_idx[:, :-1].detach()
+        pseudo_trg_hard_idx= torch.argmax(pseudo_trg_idx, dim=2)
+        _, trg_m, trg_src_m = self._get_causal_mask(src_idx, pseudo_trg_hard_idx)
+        _, trg_pm = self._get_padding_mask(src_idx, pseudo_trg_hard_idx)
+        dec_out_trg = self.decoder.decode(pseudo_trg_idx, enc_src, trg_m, trg_src_m, trg_pm, src_pm) # max_len -1
+
+        ###############################################
+        # then perform sampling based on pseudo labels
+        ###############################################
+        
+        # out_trg_gumbel = F.gumbel_softmax(dec_out_trg, tau=temperature, hard=False)
+        out_trg_gumbel = gumbel_softmax_topk_(dec_out_trg, temperature, top_k)
+        trg_input = torch.cat((F.one_hot(src_idx[:, 0].unsqueeze(1), self.vocab_size), out_trg_gumbel), dim=1)
+        trg_idx_ = torch.argmax(trg_input, dim=2)
+        # trg_idx_ = torch.cat((src_idx[:, 0].unsqueeze(1), trg_idx_), dim=1)
+        
+        # assert trg_idx_.size() == src_idx.size()
+        q_trg = out_trg_gumbel
+
+        ###############################################
+        # final reconstruct to original labels
+        ###############################################
+
+        src_pm_n, trg_pm_n = self._get_padding_mask(trg_idx_, src_idx[:, :-1])
+        _, trg_m_n, trg_src_m_n = self._get_causal_mask(trg_idx_, src_idx[:, :-1])
+
+        enc_src_n = self.encoder.encode(trg_input, None, src_pm_n)
+        dec_out_src = self.decoder.decode(src_idx[:, :-1], enc_src_n, trg_m_n, trg_src_m_n, trg_pm_n, src_pm_n)
+
+        return trg_idx_, q_trg, dec_out_src
+    
+
+    def unsupervised_reconstruction_(self, src_idx, temperature, top_k):
         '''
         Unsupervised reconstruction with gumbel softmax sampling 
         https://arxiv.org/pdf/1611.01144.pdf
@@ -100,30 +284,32 @@ class Transformer(nn.Module):
         _, T = src_idx.size()
         src_pm, _ = self._get_padding_mask(src_idx, src_idx)
         enc_src = self.encoder.encode(src_idx, None, src_pm)
-        trg_idx = src_idx[:, 0].unsqueeze(1).detach() # B, 1
+        trg_pidx = src_idx[:, 0].unsqueeze(1).detach() # B, 1
 
         for _ in range(T-1):
-            _, trg_m, trg_src_m = self._get_causal_mask(src_idx, trg_idx)
-            _, trg_pm = self._get_padding_mask(src_idx, trg_idx)
-            trg_out = self.decoder.decode(trg_idx, enc_src, trg_m, trg_src_m, trg_pm, src_pm)
+            _, trg_m, trg_src_m = self._get_causal_mask(src_idx, trg_pidx)
+            _, trg_pm = self._get_padding_mask(src_idx, trg_pidx)
+            trg_out = self.decoder.decode(trg_pidx, enc_src, trg_m, trg_src_m, trg_pm, src_pm)
             trg_new_idx = torch.argmax(trg_out[:, -1], dim=1).unsqueeze(1)
-            trg_idx = torch.cat((trg_idx, trg_new_idx), dim=1)
+            trg_pidx = torch.cat((trg_pidx, trg_new_idx), dim=1)
 
-        pseudo_trg_idx = trg_idx.detach()[:, :-1]
+        pseudo_trg_idx = trg_pidx[:, :-1].detach()
         _, trg_m, trg_src_m = self._get_causal_mask(src_idx, pseudo_trg_idx)
         _, trg_pm = self._get_padding_mask(src_idx, pseudo_trg_idx)
         dec_out_trg = self.decoder.decode(pseudo_trg_idx, enc_src, trg_m, trg_src_m, trg_pm, src_pm)
 
         ###############################################
-        # then perform sampliing based on pseudo labels
+        # then perform sampling based on pseudo labels
         ###############################################
-
-        dec_out_trg = F.gumbel_softmax(dec_out_trg, tau=temperature, hard=True)
-        trg_idx_ = torch.argmax(dec_out_trg, dim=2)
-        trg_idx_ = torch.cat((src_idx[:, 0].unsqueeze(1), trg_idx_), dim=1)
+        
+        # out_trg_gumbel = F.gumbel_softmax(dec_out_trg, tau=temperature, hard=False)
+        out_trg_gumbel = gumbel_softmax_topk(dec_out_trg, temperature, top_k, 5)
+        trg_input = torch.cat((F.one_hot(src_idx[:, 0].unsqueeze(1), self.vocab_size), out_trg_gumbel), dim=1)
+        trg_idx_ = torch.argmax(trg_input, dim=2)
+        # trg_idx_ = torch.cat((src_idx[:, 0].unsqueeze(1), trg_idx_), dim=1)
         
         assert trg_idx_.size() == src_idx.size()
-        q_trg = dec_out_trg
+        q_trg = out_trg_gumbel
 
         ###############################################
         # final reconstruct to original labels
@@ -131,8 +317,8 @@ class Transformer(nn.Module):
 
         src_pm_n, trg_pm_n = self._get_padding_mask(trg_idx_, src_idx[:, :-1])
         _, trg_m_n, trg_src_m_n = self._get_causal_mask(trg_idx_, src_idx[:, :-1])
-            
-        enc_src_n = self.encoder.encode(trg_idx_, None, src_pm_n)
+
+        enc_src_n = self.encoder.encode(trg_input, None, src_pm_n)
         dec_out_src = self.decoder.decode(src_idx[:, :-1], enc_src_n, trg_m_n, trg_src_m_n, trg_pm_n, src_pm_n)
 
         return trg_idx_, q_trg, dec_out_src
@@ -191,7 +377,7 @@ class Transformer(nn.Module):
         _, S = src_idx.size()
         src_idx_ = src_idx[:, 0].unsqueeze(1).detach() # B, 1
 
-        for _ in range(T-1):
+        for _ in range(S-1):
             _, trg_m, trg_src_m = self._get_causal_mask(trg_idx_, src_idx_)
             _, trg_pm = self._get_padding_mask(trg_idx_, src_idx_)
             src_out = self.decoder.decode(src_idx_, enc_src_n, trg_m, trg_src_m, trg_pm, src_pm_n)

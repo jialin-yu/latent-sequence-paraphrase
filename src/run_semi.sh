@@ -7,18 +7,20 @@
 #SBATCH --qos=long-high-prio
 #SBATCH --job-name=test_env
 #SBATCH --time=7-0
-#SBATCH --nodelist=gpu10
+#SBATCH --nodelist=gpu11
 
 source ../env/bin/activate
 module load cuda/11.3
 
 python run_semi.py \
     --data='quora' \
-    --seed=1220 \
-    --un_train_size=100000 \
-    --train_size=100000 \
+    --seed=2106 \
+    --un_train_size=20000 \
+    --train_size=20000 \
     --semi_lr=0.0002 \
     --semi_max_epoch=30 \
     --fixed_temperature=False \
-    --gumbel_max=True \
+    --use_lm=True \
+    --top_k=10 \
+
 

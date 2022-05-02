@@ -57,10 +57,10 @@ class Configs(object):
         lm_id = f'Data_{self.data}_Lr_{self.lm_lr}_Seed_{self.lm_seed}_Ep_{self.lm_max_epoch}'
         self.lm_id = lm_id
 
-        seq2seq_id = f'Data_{self.data}_Train_{self.train_size}_Lr_{self.seq2seq_lr}_Seed_{self.seed}_Duo_{self.duo}_Ep_{self.seq2seq_max_epoch}'
+        seq2seq_id = f'Data_{self.data}_Train_{self.train_size}_Lr_{self.seq2seq_lr}_Seed_{self.seed}_Duo_{self.seq2seq}_Ep_{self.seq2seq_max_epoch}'
         self.seq2seq_id = seq2seq_id
 
-        semi_id = f'Data_{self.data}_UNTrain_{self.un_train_size}_Train_{self.train_size}_Lr_{self.semi_lr}_Seed_{self.seed}_Gum_{self.gumbel_max}_Ep_{self.semi_max_epoch}'
+        semi_id = f'Data_{self.data}_UNTrain_{self.un_train_size}_Train_{self.train_size}_Lr_{self.semi_lr}_Seed_{self.seed}_Ep_{self.semi_max_epoch}'
         self.semi_id = semi_id
         
         

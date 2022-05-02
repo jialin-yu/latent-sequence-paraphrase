@@ -1,4 +1,4 @@
-from trainer_quora import Trainer
+from trainer import Trainer
 from config import Configs
 import argparse
 import torch

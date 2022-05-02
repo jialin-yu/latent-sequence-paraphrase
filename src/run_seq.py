@@ -1,4 +1,4 @@
-from trainer_quora import Trainer
+from trainer import Trainer
 from config import Configs
 import argparse
 import torch
@@ -27,21 +27,11 @@ def main():
         '-utrs', '--un_train_size', type=int, default=20000)
     parser.add_argument(
         '-trs', '--train_size', type=int, default=20000)
-    
-    parser.add_argument(
-        '-lh', '--latent_hard', type=str2bool, default=False)
-    
-    parser.add_argument(
-        '-gum', '--gumbel_max', type=str2bool, default=True)
     parser.add_argument(
         '-ft', '--fixed_temperature', type=str2bool, default=False)
+    parser.add_argument(
+        '-plm', '--use_lm', type=str2bool, default=True)
     
-    parser.add_argument(
-        '-plm', '--use_pretrain_lm', type=str2bool, default=True)
-
-    parser.add_argument(
-        '-up', '--use_pseudo', type=str2bool, default=False)
-
     # LM experiment
     parser.add_argument(
         '-lmdir', '--lm_dir', type=str, default='../model/lm/')
@@ -51,20 +41,13 @@ def main():
         '-lmlr', '--lm_lr', type=float, default=1e-4)
 
     parser.add_argument(
-        '-vaedir', '--vae_dir', type=str, default='../model/vae/')
-    parser.add_argument(
-        '-vaeme', '--vae_max_epoch', type=int, default=15)
-    parser.add_argument(
-        '-vaelr', '--vae_lr', type=float, default=1e-4)
-
-    parser.add_argument(
         '-seq2seqdir', '--seq2seq_dir', type=str, default='../model/seq2seq/')
     parser.add_argument(
         '-seq2seqme', '--seq2seq_max_epoch', type=int, default=10)
     parser.add_argument(
         '-seq2seqlr', '--seq2seq_lr', type=float, default=1e-4)
     parser.add_argument(
-        '-duo_train', '--duo', type=str2bool, default=False)
+        '-seq2seqexperiment', '--seq2seq', type=str2bool, default=False)
 
     parser.add_argument(
         '-semidir', '--semi_dir', type=str, default='../model/semi/')

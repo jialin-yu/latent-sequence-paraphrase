@@ -1,4 +1,4 @@
-from trainer_quora import Trainer
+from trainer import Trainer
 from config import Configs
 import argparse
 import torch
@@ -27,17 +27,18 @@ def main():
         '-utrs', '--un_train_size', type=int, default=20000)
     parser.add_argument(
         '-trs', '--train_size', type=int, default=20000)
-    
-    parser.add_argument(
-        '-lh', '--latent_hard', type=str2bool, default=False)
-    
-    parser.add_argument(
-        '-gum', '--gumbel_max', type=str2bool, default=True)
     parser.add_argument(
         '-ft', '--fixed_temperature', type=str2bool, default=False)
-    
     parser.add_argument(
-        '-plm', '--use_pretrain_lm', type=str2bool, default=True)
+        '-plm', '--use_lm', type=str2bool, default=True)
+    
+    # LM experiment
+    # parser.add_argument(
+    #     '-lmdir', '--lm_dir', type=str, default='../model/lm/')
+    # parser.add_argument(
+    #     '-lmme', '--lm_max_epoch', type=int, default=15)
+    # parser.add_argument(
+    #     '-lmlr', '--lm_lr', type=float, default=1e-4)
 
     parser.add_argument(
         '-seq2seqdir', '--seq2seq_dir', type=str, default='../model/seq2seq/')
@@ -46,7 +47,7 @@ def main():
     parser.add_argument(
         '-seq2seqlr', '--seq2seq_lr', type=float, default=1e-4)
     parser.add_argument(
-        '-duo_train', '--duo', type=str2bool, default=False)
+        '-seq2seqexperiment', '--seq2seq', type=str2bool, default=False)
 
     parser.add_argument(
         '-semidir', '--semi_dir', type=str, default='../model/semi/')
@@ -54,6 +55,8 @@ def main():
         '-semime', '--semi_max_epoch', type=int, default=15)
     parser.add_argument(
         '-semilr', '--semi_lr', type=float, default=1e-4)
+    parser.add_argument(
+        '-topk', '--top_k', type=int, default=500)
 
     parser.add_argument(
         '-s', '--seed', type=int, default=1234)
@@ -63,6 +66,7 @@ def main():
 
     configs = Configs(**vars(args))
     interface = Trainer(configs)
+    
     # interface.main_vae()
     # interface.main_seq2seq()
     interface.main_semi()
