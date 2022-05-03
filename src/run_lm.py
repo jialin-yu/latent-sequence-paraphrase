@@ -25,8 +25,6 @@ def main():
     parser.add_argument(
         '-trs', '--train_size', type=int, default=20000)
     parser.add_argument(
-        '-gum', '--gumbel_max', type=str2bool, default=True)
-    parser.add_argument(
         '-ft', '--fixed_temperature', type=str2bool, default=False)
         
     # LM experiment

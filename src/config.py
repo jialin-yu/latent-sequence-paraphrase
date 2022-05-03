@@ -20,8 +20,8 @@ class Configs(object):
         self.ms_batch_size = 512
 
         self.lm_seed = 1234
-        self.lm_lr = 0.0001
-        self.lm_max_epoch = 50
+        self.lm_lr = 0.0002
+        self.lm_max_epoch = 30
 
         self.hid_dim = 512
         self.n_heads = 8

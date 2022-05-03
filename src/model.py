@@ -79,59 +79,6 @@ class Transformer(nn.Module):
 
         return src_pm, trg_pm
 
-    def unsupervised_reconstruction__(self, src_idx, temperature, top_k):
-        '''
-        Unsupervised reconstruction with gumbel softmax sampling 
-        https://arxiv.org/pdf/1611.01144.pdf
-        https://arxiv.org/pdf/1611.00712.pdf
-        
-        INPUT:
-        src_idx (B, S); <bos> x <eos>
-        temperature: float number
-        RETURN: 
-        trg_idx_ (B, S) <bos> y_ <eos>
-        trg_logits (B, S-1, V) y_ <eos>
-        src_logits (B, S-1, V) x_ <eos>
-        '''
-
-        ###############################################
-        # first generate pseudo teacher forcing labels
-        ###############################################
-
-        _, T = src_idx.size()
-
-        src_pm, _ = self._get_padding_mask(src_idx, src_idx)
-        enc_src = self.encoder.encode(src_idx, None, src_pm)
-        # trg_pidx = src_idx[:, 0].unsqueeze(1).detach() # B, 1
-        trg_hard = F.one_hot(src_idx[:, 0].unsqueeze(1), self.vocab_size).detach()
-        trg_soft = F.one_hot(src_idx[:, 0].unsqueeze(1), self.vocab_size).detach()
-        trg_idx = torch.argmax(trg_hard, dim=2).detach()
-
-        for _ in range(self.max_len-1):
-            _, trg_m, trg_src_m = self._get_causal_mask(src_idx, trg_idx)
-            _, trg_pm = self._get_padding_mask(src_idx, trg_idx)
-            trg_out = self.decoder.decode(trg_soft, enc_src, trg_m, trg_src_m, trg_pm, src_pm)
-            hard, soft = gumbel_softmax_topk(trg_out, temperature, top_k, 1)
-            trg_hard = torch.cat((trg_hard, hard[:, -1].unsqueeze(1)), dim=1).detach() # max_len
-            trg_soft = torch.cat((trg_soft, soft[:, -1].unsqueeze(1)), dim=1).detach() # max_len
-            trg_idx = torch.argmax(trg_hard, dim=2).detach()
-        
-        final_trg = trg_soft
-        final_trg_idx = trg_idx
-        
-        q_trg = final_trg
-        ###############################################
-        # final reconstruct to original labels
-        ###############################################
-
-        src_pm_n, trg_pm_n = self._get_padding_mask(final_trg_idx, src_idx[:, :-1])
-        _, trg_m_n, trg_src_m_n = self._get_causal_mask(final_trg_idx, src_idx[:, :-1])
-
-        enc_src_n = self.encoder.encode(final_trg, None, src_pm_n)
-        dec_out_src = self.decoder.decode(src_idx[:, :-1], enc_src_n, trg_m_n, trg_src_m_n, trg_pm_n, src_pm_n)
-
-        return final_trg_idx, q_trg, dec_out_src
-
     def unsupervised_reconstruction(self, src_idx, temperature, top_k):
         '''
         Unsupervised reconstruction with gumbel softmax sampling 

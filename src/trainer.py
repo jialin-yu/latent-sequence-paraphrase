@@ -1,4 +1,6 @@
 import time
+
+from matplotlib.pyplot import step
 from data_utils import *
 from torch.utils.data import DataLoader
 from torch.nn.utils.rnn import pad_sequence
@@ -134,7 +136,7 @@ class Trainer(object):
 
     
     def main_seq2seq(self):
-        wandb.init(project='paraphrase-seq2seq', config=self.configs, entity='du_jialin', settings=wandb.Settings(start_method='fork'))
+        wandb.init(project='paraphrase-seq2seq', config=self.configs, entity='du_jialin', settings=wandb.Settings(start_method='fork'), reinit=True)
         model_dir = self.configs.seq2seq_dir
         max_epoch = self.configs.seq2seq_max_epoch
         lr = self.configs.seq2seq_lr
@@ -173,8 +175,8 @@ class Trainer(object):
             
             valid_loss = self._evaluate_seq2seq(self.valid_data)
             
-            wandb.log({'train-loss': train_loss})
-            wandb.log({'valid-loss': valid_loss})
+            wandb.log({'train-loss': train_loss}, step=epoch+1)
+            wandb.log({'valid-loss': valid_loss}, step=epoch+1)
             
             print(f'{"-"*20} Epoch {epoch + 1}/{max_epoch} training done {"-"*20}')
             
@@ -196,7 +198,8 @@ class Trainer(object):
     
 
     def main_lm(self):
-        wandb.init(project='paraphrase-seq2seq', config=self.configs, entity='du_jialin', settings=wandb.Settings(start_method='fork'))
+        wandb.init(project='paraphrase-seq2seq', config=self.configs, entity='du_jialin', settings=wandb.Settings(start_method='fork'), reinit=True)
+        # https://github.com/wandb/client/issues/1132
         model_dir = self.configs.lm_dir
         max_epoch = self.configs.lm_max_epoch
         lr = self.configs.lm_lr
@@ -223,9 +226,9 @@ class Trainer(object):
         best_valid_loss = float('inf')
         for epoch in range(max_epoch):
             train_loss = self._train_lm(self.lm_data, optimizer, grad_clip)
-            wandb.log({'lm-train-loss': train_loss})
+            wandb.log({'lm-train-loss': train_loss}, step=epoch+1)
             valid_loss = self._evaluate_lm(self.valid_data)
-            wandb.log({'lm-valid-loss': valid_loss})
+            wandb.log({'lm-valid-loss': valid_loss}, step=epoch+1)
             print(f'{"-"*20} Epoch {epoch + 1}/{max_epoch} training done {"-"*20}')
             if valid_loss < best_valid_loss:
                 best_valid_loss = valid_loss 
@@ -240,7 +243,7 @@ class Trainer(object):
 
     def main_semi(self):
 
-        wandb.init(project='paraphrase-seq2seq', config=self.configs, entity='du_jialin', settings=wandb.Settings(start_method='fork'))
+        wandb.init(project='paraphrase-seq2seq', config=self.configs, entity='du_jialin', settings=wandb.Settings(start_method='fork'), reinit=True)
         lm_dir = self.configs.lm_dir
         lm_id = self.configs.lm_id
         use_lm = self.configs.use_lm
@@ -322,10 +325,10 @@ class Trainer(object):
             
             # train_loss = train_loss_un * r_un + train_loss_su * (1 - r_un)
             train_loss = train_loss_un
-            wandb.log({'train-loss': train_loss})
+            wandb.log({'train-loss': train_loss}, step=epoch+1)
 
             valid_loss_ = self._evaluate_seq2seq(self.valid_data)
-            wandb.log({'valid-loss': valid_loss_})
+            wandb.log({'valid-loss': valid_loss_}, step=epoch+1)
             
             print(f'{"-"*20} Epoch {epoch + 1}/{max_epoch} training done {"-"*20}')
             
@@ -345,7 +348,7 @@ class Trainer(object):
 
     def main_semi2(self):
 
-        wandb.init(project='paraphrase-seq2seq', config=self.configs, entity='du_jialin', settings=wandb.Settings(start_method='fork'))
+        wandb.init(project='paraphrase-seq2seq', config=self.configs, entity='du_jialin', settings=wandb.Settings(start_method='fork'), reinit=True)
         
         model_dir = self.configs.semi_dir
         max_epoch = self.configs.semi_max_epoch
@@ -382,8 +385,8 @@ class Trainer(object):
             train_loss = self._train_ddl(self.train_data, optimizer, grad_clip)
             valid_loss = self._evaluate_seq2seq(self.valid_data)
             
-            wandb.log({'pre-train-train-loss': train_loss})
-            wandb.log({'pre-train-valid-loss': valid_loss})
+            wandb.log({'pre-train-train-loss': train_loss}, step=epoch+1)
+            wandb.log({'pre-train-valid-loss': valid_loss}, step=epoch+1)
             
             print(f'{"-"*20} Epoch {epoch + 1}/{max_epoch} training done {"-"*20}')
             
@@ -480,10 +483,10 @@ class Trainer(object):
             
             train_loss = train_loss_un * r_un + train_loss_su * (1 - r_un)
             # train_loss = train_loss_un
-            wandb.log({'train-loss': train_loss})
+            wandb.log({'train-loss': train_loss}, step=epoch+1)
 
             valid_loss_ = self._evaluate_seq2seq(self.valid_data)
-            wandb.log({'valid-loss': valid_loss_})
+            wandb.log({'valid-loss': valid_loss_}, step=epoch+1)
             
             print(f'{"-"*20} Epoch {epoch + 1}/{max_epoch} training done {"-"*20}')
             
