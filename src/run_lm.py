@@ -38,7 +38,7 @@ def main():
     parser.add_argument(
         '-seq2seqlr', '--seq2seq_lr', type=float, default=1e-4)
     parser.add_argument(
-        '-duo_train', '--duo', type=str2bool, default=False)
+        '-seq2seqexperiment', '--seq2seq', type=str2bool, default=False)
 
     parser.add_argument(
         '-semidir', '--semi_dir', type=str, default='../model/semi/')

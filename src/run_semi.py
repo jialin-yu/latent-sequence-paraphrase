@@ -69,7 +69,7 @@ def main():
     
     # interface.main_vae()
     # interface.main_seq2seq()
-    interface.main_semi()
+    interface.main_semi2()
 
 
 if __name__ == "__main__":
