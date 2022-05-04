@@ -79,6 +79,67 @@ class Transformer(nn.Module):
 
         return src_pm, trg_pm
 
+    def unsupervised_reconstruction_(self, src_idx, temperature, top_k):
+        '''
+        Unsupervised reconstruction with gumbel softmax sampling 
+        https://arxiv.org/pdf/1611.01144.pdf
+        https://arxiv.org/pdf/1611.00712.pdf
+        
+        INPUT:
+        src_idx (B, S); <bos> x <eos>
+        temperature: float number
+        RETURN: 
+        trg_idx_ (B, S) <bos> y_ <eos>
+        trg_logits (B, S-1, V) y_ <eos>
+        src_logits (B, S-1, V) x_ <eos>
+        '''
+
+        ###############################################
+        # first generate pseudo teacher forcing labels
+        ###############################################
+
+        _, T = src_idx.size()
+        src_pm, _ = self._get_padding_mask(src_idx, src_idx)
+        enc_src = self.encoder.encode(src_idx, None, src_pm)
+        trg_idx_ = src_idx[:, 0].unsqueeze(1).detach() # B, 1
+
+        for _ in range(T-1):
+            _, trg_m, trg_src_m = self._get_causal_mask(src_idx, trg_idx_)
+            _, trg_pm = self._get_padding_mask(src_idx, trg_idx_)
+            trg_out = self.decoder.decode(trg_idx_, enc_src, trg_m, trg_src_m, trg_pm, src_pm)
+            trg_new_idx = torch.argmax(trg_out[:, -1], dim=1).unsqueeze(1)
+            trg_idx_ = torch.cat((trg_idx_, trg_new_idx), dim=1).detach()
+
+        final_out = trg_out.detach()
+        # detach this now everything from teacher force is not associated with gradient
+        tf_trg_ = gumbel_softmax_topk(final_out, temperature, top_k, True) 
+
+        tf_trg_idx= torch.argmax(tf_trg_, dim=2)
+        _, trg_m, trg_src_m = self._get_causal_mask(src_idx, tf_trg_idx)
+        _, trg_pm = self._get_padding_mask(src_idx, tf_trg_idx)
+        dec_out_trg = self.decoder.decode(tf_trg_, enc_src, trg_m, trg_src_m, trg_pm, src_pm)
+
+        ###############################################
+        # then perform sampling based on pseudo labels
+        ###############################################
+
+        out_trg_gumbel = gumbel_softmax_topk(dec_out_trg, temperature, top_k, True)
+        trg_input = torch.cat((F.one_hot(src_idx[:, 0].unsqueeze(1), self.vocab_size).detach(), out_trg_gumbel), dim=1)
+        trg_idx_ = torch.argmax(trg_input, dim=2)
+        q_trg = out_trg_gumbel
+
+        ###############################################
+        # final reconstruct to original labels
+        ###############################################
+
+        src_pm_n, trg_pm_n = self._get_padding_mask(trg_idx_, src_idx[:, :-1])
+        _, trg_m_n, trg_src_m_n = self._get_causal_mask(trg_idx_, src_idx[:, :-1])
+
+        enc_src_n = self.encoder.encode(trg_input, None, src_pm_n)
+        dec_out_src = self.decoder.decode(src_idx[:, :-1], enc_src_n, trg_m_n, trg_src_m_n, trg_pm_n, src_pm_n)
+
+        return trg_idx_, q_trg, dec_out_src
+
     def unsupervised_reconstruction(self, src_idx, temperature, top_k):
         '''
         Unsupervised reconstruction with gumbel softmax sampling 
@@ -110,13 +171,15 @@ class Transformer(nn.Module):
             trg_new_idx = torch.argmax(trg_out[:, -1], dim=1).unsqueeze(1)
             trg_idx_ = torch.cat((trg_idx_, trg_new_idx), dim=1).detach()
 
-        final_out = trg_out
-        tf_trg_ = gumbel_softmax_topk(final_out, temperature, top_k, True) 
+        tf_trg_idx = trg_idx_[:, :-1]
+        # final_out = trg_out.detach()
+        # detach this now everything from teacher force is not associated with gradient
+        # tf_trg_ = gumbel_softmax_topk(final_out, temperature, top_k, True) 
 
-        tf_trg_idx= torch.argmax(tf_trg_, dim=2)
+        # tf_trg_idx= torch.argmax(tf_trg_, dim=2)
         _, trg_m, trg_src_m = self._get_causal_mask(src_idx, tf_trg_idx)
         _, trg_pm = self._get_padding_mask(src_idx, tf_trg_idx)
-        dec_out_trg = self.decoder.decode(tf_trg_, enc_src, trg_m, trg_src_m, trg_pm, src_pm)
+        dec_out_trg = self.decoder.decode(tf_trg_idx, enc_src, trg_m, trg_src_m, trg_pm, src_pm)
 
         ###############################################
         # then perform sampling based on pseudo labels
@@ -125,7 +188,7 @@ class Transformer(nn.Module):
         out_trg_gumbel = gumbel_softmax_topk(dec_out_trg, temperature, top_k, True)
         trg_input = torch.cat((F.one_hot(src_idx[:, 0].unsqueeze(1), self.vocab_size).detach(), out_trg_gumbel), dim=1)
         trg_idx_ = torch.argmax(trg_input, dim=2)
-        q_trg = out_trg_gumbel
+        q_trg = dec_out_trg
 
         ###############################################
         # final reconstruct to original labels
@@ -162,6 +225,41 @@ class Transformer(nn.Module):
         enc_src = self.encoder.encode(src_idx, None, src_pm)
         dec_out_trg = self.decoder.decode(trg_idx[:, :-1], enc_src, trg_m, trg_src_m, trg_pm, src_pm)
 
+        ###############################################
+        # then trg to src
+        ###############################################
+
+        src_pm_n, trg_pm_n = self._get_padding_mask(trg_idx, src_idx[:, :-1])
+        _, trg_m_n, trg_src_m_n = self._get_causal_mask(trg_idx, src_idx[:, :-1])
+            
+        enc_src_n = self.encoder.encode(trg_idx, None, src_pm_n)
+        dec_out_src = self.decoder.decode(src_idx[:, :-1], enc_src_n, trg_m_n, trg_src_m_n, trg_pm_n, src_pm_n)
+
+        return dec_out_src, dec_out_trg, dec_out_src, dec_out_trg
+    
+    def dual_directional_learning_(self, src_idx, trg_idx):
+        '''
+        INPUT:
+        src_idx (B, S); <bos> x <eos>
+        trg_idx (B, T); <bos> y <eos>
+
+        RETURN: 
+        reconstruct_src (B, S-1, V) x_ <eos>
+        reconstruct_trg (B, T-1, V) y_ <eos>
+        '''
+
+        ###############################################
+        # first src to trg
+        ###############################################
+        
+        # sequence to sequence learning
+
+        src_pm, trg_pm = self._get_padding_mask(src_idx, trg_idx[:, :-1])
+        _, trg_m, trg_src_m = self._get_causal_mask(src_idx, trg_idx[:, :-1])
+            
+        enc_src = self.encoder.encode(src_idx, None, src_pm)
+        dec_out_trg = self.decoder.decode(trg_idx[:, :-1], enc_src, trg_m, trg_src_m, trg_pm, src_pm)
+
         # reconstruction src
 
         _, T = trg_idx.size()
@@ -173,11 +271,13 @@ class Transformer(nn.Module):
             trg_out = self.decoder.decode(trg_idx_, enc_src, trg_m, trg_src_m, trg_pm, src_pm)
             trg_new_idx = torch.argmax(trg_out[:, -1], dim=1).unsqueeze(1)
             trg_idx_ = torch.cat((trg_idx_, trg_new_idx), dim=1)
-
-        src_pm_n, trg_pm_n = self._get_padding_mask(trg_idx_, src_idx[:, :-1])
-        _, trg_m_n, trg_src_m_n = self._get_causal_mask(trg_idx_, src_idx[:, :-1])
+        
+        final_trg = trg_idx_.detach()
+        
+        src_pm_n, trg_pm_n = self._get_padding_mask(final_trg, src_idx[:, :-1])
+        _, trg_m_n, trg_src_m_n = self._get_causal_mask(final_trg, src_idx[:, :-1])
             
-        enc_src_n = self.encoder.encode(trg_idx_, None, src_pm_n)
+        enc_src_n = self.encoder.encode(final_trg, None, src_pm_n)
         reconstruct_src = self.decoder.decode(src_idx[:, :-1], enc_src_n, trg_m_n, trg_src_m_n, trg_pm_n, src_pm_n)
 
         ###############################################
@@ -199,11 +299,13 @@ class Transformer(nn.Module):
             src_out = self.decoder.decode(src_idx_, enc_src_n, trg_m, trg_src_m, trg_pm, src_pm_n)
             src_new_idx = torch.argmax(src_out[:, -1], dim=1).unsqueeze(1)
             src_idx_ = torch.cat((src_idx_, src_new_idx), dim=1)
+        
+        final_src = src_idx_.detach()
 
-        src_pm_n, trg_pm_n = self._get_padding_mask(src_idx_, trg_idx[:, :-1])
-        _, trg_m_n, trg_src_m_n = self._get_causal_mask(src_idx_, trg_idx[:, :-1])
+        src_pm_n, trg_pm_n = self._get_padding_mask(final_src, trg_idx[:, :-1])
+        _, trg_m_n, trg_src_m_n = self._get_causal_mask(final_src, trg_idx[:, :-1])
             
-        enc_src_n = self.encoder.encode(src_idx_, None, src_pm_n)
+        enc_src_n = self.encoder.encode(final_src, None, src_pm_n)
         reconstruct_trg = self.decoder.decode(trg_idx[:, :-1], enc_src_n, trg_m_n, trg_src_m_n, trg_pm_n, src_pm_n)
 
         return dec_out_src, dec_out_trg, reconstruct_src, reconstruct_trg

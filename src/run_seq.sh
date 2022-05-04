@@ -15,10 +15,10 @@ module load cuda/11.3
 
 python run_seq.py \
     --data='quora' \
-    --seed=9206 \
-    --un_train_size=100000 \
-    --train_size=100000 \
+    --seed=9211 \
+    --un_train_size=20000 \
+    --train_size=20000 \
     --seq2seq_lr=0.0002 \
-    --seq2seq_max_epoch=50 \
-    --seq2seq=True \
+    --seq2seq_max_epoch=30 \
+    --seq2seq=False \
 

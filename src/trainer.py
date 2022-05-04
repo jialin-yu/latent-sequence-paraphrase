@@ -81,10 +81,8 @@ class Trainer(object):
 
         if interpolate_latent:
             print(f'{"-"*20} Perform Latent Sampling {"-"*20}')
-            latent_sample_idx = self._latent_interpolate(dataloader, latent_samples)
+            latent_sample_idx = self._latent_interpolate_(dataloader, latent_samples, first_n)
             latent_token = [[tokenize(decode_index_to_string(s)) for s in sets] for sets in latent_sample_idx]
-            # print(test_token[0])
-            # print(latent_token[0])
         
         print(f'{"-"*20} Calculate Final Results {"-"*20}')
         calculate_bound(test_token, test_split, True, True, True)
@@ -133,6 +131,18 @@ class Trainer(object):
                         temp.append(trg_.squeeze().cpu())
                     sample_idx.append(temp)
         return sample_idx
+    
+    def _latent_interpolate_(self, dataloader, number_samples, number):
+        sample_idx = []
+        for _, (src, _) in enumerate(tqdm(dataloader)):
+                for index, _ in enumerate(src):
+                    temp = []
+                    for _ in range(number_samples):
+                        trg_, _, _ = self.model.unsupervised_reconstruction(src[index].unsqueeze(0), 0.01, 10)
+                        temp.append(trg_.squeeze().cpu())
+                    sample_idx.append(temp)
+                if len(sample_idx) == number:
+                    return sample_idx
 
     
     def main_seq2seq(self):
@@ -194,8 +204,6 @@ class Trainer(object):
         print(f'{"-"*40}')
         
         self.main_inference(self.test_data, self.test_split, interpolate_latent=False)
-    
-    
 
     def main_lm(self):
         wandb.init(project='paraphrase-seq2seq', config=self.configs, entity='du_jialin', settings=wandb.Settings(start_method='fork'), reinit=True)
@@ -360,6 +368,7 @@ class Trainer(object):
 
         print(f'{"-"*40}')
         print(f'{"-"*20} Initialise SEMI experiment {"-"*20}')
+        print(f'{"-"*40}')
         print(f'{"-"*20} STAGE ONE: seq2seq pre-training {"-"*20}')
         print(f'Use model directory {model_dir}')
         print(f'Experiment run for max {max_epoch} epochs; total of {len(self.train_data)*max_epoch} steps')
@@ -385,9 +394,6 @@ class Trainer(object):
             train_loss = self._train_ddl(self.train_data, optimizer, grad_clip)
             valid_loss = self._evaluate_seq2seq(self.valid_data)
             
-            wandb.log({'pre-train-train-loss': train_loss}, step=epoch+1)
-            wandb.log({'pre-train-valid-loss': valid_loss}, step=epoch+1)
-            
             print(f'{"-"*20} Epoch {epoch + 1}/{max_epoch} training done {"-"*20}')
             
             if valid_loss < best_valid_loss:
@@ -396,11 +402,14 @@ class Trainer(object):
                 print(f'{"-"*20} Save model in epoch {epoch + 1}. {"-"*20}')
         
         print(f'{"-"*40}')
-        print(f'{"-"*20} Retrieve best model as initilisation {"-"*20}')
-        self._load_model(self.model, model_dir, experiment_id)
-        self.model.to(self.device)
         print(f'STAGE ONE experiment done in {time.time() - EXP_START_TIME}s.')
         print(f'{"-"*40}')
+
+        print(f'{"-"*40}')
+        print(f'{"-"*20} Retrieve best model from stage one as initilisation {"-"*20}')
+        self._load_model(self.model, model_dir, experiment_id)
+        self.model.to(self.device)
+        best_valid_loss = self._evaluate_seq2seq(self.valid_data)
 
         lm_dir = self.configs.lm_dir
         lm_id = self.configs.lm_id
@@ -413,15 +422,11 @@ class Trainer(object):
         if use_lm:
             print(f'Use pre-trained LM from dir {lm_dir} and id {lm_id}')
             self._load_model(self.model.prior, lm_dir, lm_id)
+            beta_factor = 1
         else:
             print(f'No pre-trained LM used')
+            beta_factor = 0
 
-        # model_dir = self.configs.semi_dir
-        # max_epoch = self.configs.semi_max_epoch
-        # lr = self.configs.semi_lr
-        # grad_clip = self.configs.grad_clip
-        # seed = self.configs.seed
-        # experiment_id = self.configs.semi_id
         top_k = self.configs.top_k
 
         # https://iancovert.com/blog/concrete_temperature/
@@ -434,14 +439,8 @@ class Trainer(object):
         else:
             high_temp = 10 # 13K
             low_temp = 0.01 # 100
-
-            # high_temp = 100
-            # low_temp = 10
         
         r_un = self.configs.un_train_size / (self.configs.un_train_size + self.configs.train_size)
-        # bigger = self.configs.un_train_size / self.configs.train_size
-
-        beta_factor = 0.1
         temperature = list(np.linspace(high_temp, low_temp, max_epoch))
 
         print(f'{"-"*20} STAGE TWO: semi-finetuning {"-"*20}')
@@ -452,39 +451,25 @@ class Trainer(object):
         print(f'Use seed of {seed}')
         print(f'Experiment id as {experiment_id}')
 
-        print(f'Total model parameters {self._count_parameters(self.model)} ')
+        print(f'Total model parameters {self._count_parameters(self.model)}')
         print(f'Set high temperate as {high_temp} amd low temperature as {low_temp}')
         print(f'Training with beta factor of {beta_factor} for KL')
         print(f'Gumbel Softmax with top {top_k}')
         print(f'{"-"*40}')
 
-        
-        # self._set_experiment_seed(seed)
-        # self.model.encoder.apply(self._xavier_initialize)
-        # self.model.decoder.apply(self._xavier_initialize)
 
         params = list(self.model.encoder.parameters()) + list(self.model.decoder.parameters())
         optimizer = torch.optim.Adam(params, lr=lr)
-        # su_optimizer = torch.optim.Adam(params, lr=lr)
-        # un_optimizer_encoder = torch.optim.Adam(self.model.encoder.parameters(), lr=lr*10)
-        # un_optimizer_decoder = torch.optim.Adam(self.model.decoder.parameters(), lr=lr)
         
         EXP_START = time.time()
-        best_valid_loss = float('inf')
+        # best_valid_loss = float('inf')
         for epoch in range(max_epoch):
-            # train_loss_un_1 = self._train_unsupervised(self.un_data, un_optimizer_encoder, grad_clip, temperature[epoch], beta_factor, top_k)
-            train_loss_un = self._train_unsupervised(self.un_data, optimizer, grad_clip, temperature[epoch], beta_factor, top_k)
-            # train_loss_un = (train_loss_un_1 + train_loss_un_2) / 2
-            train_loss_su = self._train_ddl(self.train_data, optimizer, grad_clip)
-            
-            # train_loss_su = self._train_ddl(self.train_data, optimizer, grad_clip)
-            # train_loss_su = self._train_unsupervised(self.un_data, optimizer, grad_clip, temperature[epoch], beta_factor, top_k)
-            # train_loss = train_loss_un
-            
-            train_loss = train_loss_un * r_un + train_loss_su * (1 - r_un)
-            # train_loss = train_loss_un
-            wandb.log({'train-loss': train_loss}, step=epoch+1)
 
+            train_loss_un = self._train_unsupervised(self.un_data, optimizer, grad_clip, temperature[epoch], beta_factor, top_k)
+            train_loss_su = self._train_ddl(self.train_data, optimizer, grad_clip)
+            train_loss = train_loss_un * r_un + train_loss_su * (1 - r_un)
+
+            wandb.log({'train-loss': train_loss}, step=epoch+1)
             valid_loss_ = self._evaluate_seq2seq(self.valid_data)
             wandb.log({'valid-loss': valid_loss_}, step=epoch+1)
             
@@ -729,14 +714,9 @@ class Trainer(object):
             optimizer.zero_grad()
             _, q_trg, src_ = self.model.unsupervised_reconstruction(src, temperature, top_k)
             rec_loss = self.model._reconstruction_loss(src_, src[:, 1:])
-
-            # _, S = src.size()
-            # q_trg = q_trg[:, :(S-1)]
             
-
             if self.configs.use_lm:
                 p_trg = self.model.language_modelling(src)
-                p_trg = F.softmax(p_trg, dim=2)
             else:
                 p_trg = F.one_hot(src[:, 1:], self.configs.vocab_size).double().to(self.device)
                 q_trg = F.softmax(q_trg, dim=2)
