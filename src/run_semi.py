@@ -57,6 +57,8 @@ def main():
         '-semilr', '--semi_lr', type=float, default=1e-4)
     parser.add_argument(
         '-topk', '--top_k', type=int, default=500)
+    parser.add_argument(
+        '-beta_factor', '--beta', type=float, default=0.001)
 
     parser.add_argument(
         '-s', '--seed', type=int, default=1234)

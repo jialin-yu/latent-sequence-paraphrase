@@ -15,7 +15,7 @@ module load cuda/11.3
 
 python run_seq.py \
     --data='quora' \
-    --seed=9211 \
+    --seed=9401 \
     --un_train_size=20000 \
     --train_size=20000 \
     --seq2seq_lr=0.0002 \

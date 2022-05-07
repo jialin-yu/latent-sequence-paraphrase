@@ -49,7 +49,7 @@ def gumbel_softmax_sample(logits, temperature):
 #     y_hard = y_hard.view(*shape)
 #     return y_hard - (y_).detach() + y_
 
-def gumbel_softmax_topk(logits, temperature, topk, hard=True):
+def gumbel_softmax_topk_(logits, temperature, topk, hard=True):
     """
     input: [*, n_class]
     return: [*, n_class] an one-hot vector
@@ -69,6 +69,33 @@ def gumbel_softmax_topk(logits, temperature, topk, hard=True):
         return y_hard - (y_).detach() + y_
     else:
         return y_
+
+
+def gumbel_softmax_topk(logits, temperature, topk, hard=True):
+    """
+    input: [*, n_class]
+    return: [*, n_class] an one-hot vector
+    """
+    samples = []
+    for i in range(10):
+        y_s = F.gumbel_softmax(logits, temperature, False)
+        samples.append(y_s.unsqueeze(-1))
+    y = torch.mean(torch.cat(samples, dim=-1), dim=-1)
+    # y = F.gumbel_softmax(logits, temperature, False)
+    vals, idx = torch.topk(y, topk, dim=-1, sorted=False)
+    y_ = torch.zeros_like(y).scatter(-1, idx, vals).float()
+    msk = (y_ == 0).float()
+    y_[msk == 1] = -float("inf")
+    y__ = F.softmax(y_, dim=-1)
+    shape = y__.size()
+    _, ind = y__.max(dim=-1)
+    y_hard = torch.zeros_like(y__).view(-1, shape[-1]).scatter(1, ind.view(-1, 1), 1)
+    y_hard = y_hard.view(*shape)
+
+    if hard:
+        return y_hard - (y__).detach() + y__
+    else:
+        return y__
 
 def softmax_topk(logits, topk):
     """

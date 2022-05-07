@@ -203,7 +203,7 @@ class Trainer(object):
         print(f'Seq2seq experiment done in {time.time() - EXP_START_TIME}s.')
         print(f'{"-"*40}')
         
-        self.main_inference(self.test_data, self.test_split, interpolate_latent=False)
+        self.main_inference(self.test_data, self.test_split, interpolate_latent=True)
 
     def main_lm(self):
         wandb.init(project='paraphrase-seq2seq', config=self.configs, entity='du_jialin', settings=wandb.Settings(start_method='fork'), reinit=True)
@@ -327,12 +327,12 @@ class Trainer(object):
             # train_loss_un = (train_loss_un_1 + train_loss_un_2) / 2
             # train_loss_su = self._train_ddl(self.train_data, optimizer, grad_clip)
             
-            # train_loss_su = self._train_ddl(self.train_data, optimizer, grad_clip)
+            train_loss_su = self._train_ddl(self.train_data, optimizer, grad_clip)
             # train_loss_su = self._train_unsupervised(self.un_data, optimizer, grad_clip, temperature[epoch], beta_factor, top_k)
             # train_loss = train_loss_un
             
-            # train_loss = train_loss_un * r_un + train_loss_su * (1 - r_un)
-            train_loss = train_loss_un
+            train_loss = train_loss_un * r_un + train_loss_su * (1 - r_un)
+            # train_loss = train_loss_un
             wandb.log({'train-loss': train_loss}, step=epoch+1)
 
             valid_loss_ = self._evaluate_seq2seq(self.valid_data)
@@ -422,11 +422,11 @@ class Trainer(object):
         if use_lm:
             print(f'Use pre-trained LM from dir {lm_dir} and id {lm_id}')
             self._load_model(self.model.prior, lm_dir, lm_id)
-            beta_factor = 1
+            beta_factor = self.configs.beta
         else:
             print(f'No pre-trained LM used')
             beta_factor = 0
-
+        
         top_k = self.configs.top_k
 
         # https://iancovert.com/blog/concrete_temperature/
@@ -435,14 +435,15 @@ class Trainer(object):
         
         if self.configs.fixed_temperature:
             high_temp = 0.1 # 2K
-            low_temp = 0.1
+            low_temp = 0.001
         else:
             high_temp = 10 # 13K
             low_temp = 0.01 # 100
         
         r_un = self.configs.un_train_size / (self.configs.un_train_size + self.configs.train_size)
         temperature = list(np.linspace(high_temp, low_temp, max_epoch))
-
+        
+        # lr = lr / 5
         print(f'{"-"*20} STAGE TWO: semi-finetuning {"-"*20}')
         print(f'Use model directory {model_dir}')
         print(f'Experiment run for max {max_epoch} epochs')
@@ -717,12 +718,14 @@ class Trainer(object):
             
             if self.configs.use_lm:
                 p_trg = self.model.language_modelling(src)
+                p_trg = F.softmax(p_trg, dim=-1)
+
+                kl_loss = self.model._KL_loss(q_trg, p_trg)
+
             else:
-                p_trg = F.one_hot(src[:, 1:], self.configs.vocab_size).double().to(self.device)
-                q_trg = F.softmax(q_trg, dim=2)
-
-            kl_loss = self.model._KL_loss(q_trg, p_trg)
-
+                
+                kl_loss = torch.zeros_like(q_trg)
+                
             loss = torch.mean(rec_loss) + beta * torch.mean(kl_loss)
 
             loss.backward()

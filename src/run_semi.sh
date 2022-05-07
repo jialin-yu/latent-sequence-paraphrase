@@ -14,13 +14,14 @@ module load cuda/11.3
 
 python run_semi.py \
     --data='quora' \
-    --seed=5003 \
-    --un_train_size=100000 \
+    --seed=7401 \
+    --un_train_size=20000 \
     --train_size=20000 \
     --semi_lr=0.0002 \
     --semi_max_epoch=30 \
     --fixed_temperature=False \
-    --use_lm=False \
-    --top_k=10 \
+    --use_lm=True \
+    --top_k=5 \
+    --beta=0.1 \
 
 

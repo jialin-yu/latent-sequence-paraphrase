@@ -27,7 +27,7 @@ class Transformer(nn.Module):
         self.decoder = TransformerDecoder(configs)
         
         self.loss = nn.CrossEntropyLoss(ignore_index=self.pad_id, reduction="none")
-        self.nll_loss = nn.NLLLoss(ignore_index=self.pad_id, reduction="none")
+        self.kl_loss = nn.KLDivLoss(reduction="none")
 
         self.max_len = configs.max_len
 
@@ -79,67 +79,6 @@ class Transformer(nn.Module):
 
         return src_pm, trg_pm
 
-    def unsupervised_reconstruction_(self, src_idx, temperature, top_k):
-        '''
-        Unsupervised reconstruction with gumbel softmax sampling 
-        https://arxiv.org/pdf/1611.01144.pdf
-        https://arxiv.org/pdf/1611.00712.pdf
-        
-        INPUT:
-        src_idx (B, S); <bos> x <eos>
-        temperature: float number
-        RETURN: 
-        trg_idx_ (B, S) <bos> y_ <eos>
-        trg_logits (B, S-1, V) y_ <eos>
-        src_logits (B, S-1, V) x_ <eos>
-        '''
-
-        ###############################################
-        # first generate pseudo teacher forcing labels
-        ###############################################
-
-        _, T = src_idx.size()
-        src_pm, _ = self._get_padding_mask(src_idx, src_idx)
-        enc_src = self.encoder.encode(src_idx, None, src_pm)
-        trg_idx_ = src_idx[:, 0].unsqueeze(1).detach() # B, 1
-
-        for _ in range(T-1):
-            _, trg_m, trg_src_m = self._get_causal_mask(src_idx, trg_idx_)
-            _, trg_pm = self._get_padding_mask(src_idx, trg_idx_)
-            trg_out = self.decoder.decode(trg_idx_, enc_src, trg_m, trg_src_m, trg_pm, src_pm)
-            trg_new_idx = torch.argmax(trg_out[:, -1], dim=1).unsqueeze(1)
-            trg_idx_ = torch.cat((trg_idx_, trg_new_idx), dim=1).detach()
-
-        final_out = trg_out.detach()
-        # detach this now everything from teacher force is not associated with gradient
-        tf_trg_ = gumbel_softmax_topk(final_out, temperature, top_k, True) 
-
-        tf_trg_idx= torch.argmax(tf_trg_, dim=2)
-        _, trg_m, trg_src_m = self._get_causal_mask(src_idx, tf_trg_idx)
-        _, trg_pm = self._get_padding_mask(src_idx, tf_trg_idx)
-        dec_out_trg = self.decoder.decode(tf_trg_, enc_src, trg_m, trg_src_m, trg_pm, src_pm)
-
-        ###############################################
-        # then perform sampling based on pseudo labels
-        ###############################################
-
-        out_trg_gumbel = gumbel_softmax_topk(dec_out_trg, temperature, top_k, True)
-        trg_input = torch.cat((F.one_hot(src_idx[:, 0].unsqueeze(1), self.vocab_size).detach(), out_trg_gumbel), dim=1)
-        trg_idx_ = torch.argmax(trg_input, dim=2)
-        q_trg = out_trg_gumbel
-
-        ###############################################
-        # final reconstruct to original labels
-        ###############################################
-
-        src_pm_n, trg_pm_n = self._get_padding_mask(trg_idx_, src_idx[:, :-1])
-        _, trg_m_n, trg_src_m_n = self._get_causal_mask(trg_idx_, src_idx[:, :-1])
-
-        enc_src_n = self.encoder.encode(trg_input, None, src_pm_n)
-        dec_out_src = self.decoder.decode(src_idx[:, :-1], enc_src_n, trg_m_n, trg_src_m_n, trg_pm_n, src_pm_n)
-
-        return trg_idx_, q_trg, dec_out_src
-
     def unsupervised_reconstruction(self, src_idx, temperature, top_k):
         '''
         Unsupervised reconstruction with gumbel softmax sampling 
@@ -171,10 +110,7 @@ class Transformer(nn.Module):
             trg_new_idx = torch.argmax(trg_out[:, -1], dim=1).unsqueeze(1)
             trg_idx_ = torch.cat((trg_idx_, trg_new_idx), dim=1).detach()
 
-        tf_trg_idx = trg_idx_[:, :-1]
-        # final_out = trg_out.detach()
-        # detach this now everything from teacher force is not associated with gradient
-        # tf_trg_ = gumbel_softmax_topk(final_out, temperature, top_k, True) 
+        tf_trg_idx = trg_idx_[:, :-1] 
 
         # tf_trg_idx= torch.argmax(tf_trg_, dim=2)
         _, trg_m, trg_src_m = self._get_causal_mask(src_idx, tf_trg_idx)
@@ -188,7 +124,7 @@ class Transformer(nn.Module):
         out_trg_gumbel = gumbel_softmax_topk(dec_out_trg, temperature, top_k, True)
         trg_input = torch.cat((F.one_hot(src_idx[:, 0].unsqueeze(1), self.vocab_size).detach(), out_trg_gumbel), dim=1)
         trg_idx_ = torch.argmax(trg_input, dim=2)
-        q_trg = dec_out_trg
+        q_trg = F.softmax(dec_out_trg, dim=-1)
 
         ###############################################
         # final reconstruct to original labels
@@ -388,12 +324,13 @@ class Transformer(nn.Module):
     def _KL_loss(self, q, p):
         '''
         Calculate kl divergence loss between q and p 
-        KL(q|p) = -E_{q}[\log(p)-\log(q)]
-        q: (B, T, V) xxxx <eos> 
+        KL(q|p) = -E_{q}[\log(p)-\log(q)] = E_{q}[\log(q)-\log(p)]
+        q: (B, T, V) xxxx <eos>
         p: (B, T, V)  xxxx <eos>
-
-        Returns: loss in (B*T)
+        https://pytorch.org/docs/stable/generated/torch.nn.KLDivLoss.html
+        q: y_true, p: y_pred
+        Returns: loss (B, T, V)
         '''
-        q_ = torch.argmax(q, dim=2)
-        return self._reconstruction_loss(p, q_) - self._reconstruction_loss(q, q_)
+
+        return self.kl_loss(torch.log(p), q)
         # return self.nll_loss(torch.log(p), q) - self.nll_loss(torch.log(q), q)
