@@ -35,7 +35,7 @@ class TransformerDecoder(nn.Module):
             pos = torch.arange(0, T).unsqueeze(0).repeat(B, 1).to(self.device) 
             trg = self.dropout((self.tok_emb(trg) * self.scale) + self.pos_emb(pos))
             y_ = self.decoder(trg, src_memory, trg_m, trg_src_m, trg_pm, src_memory_pm) 
-            # y_ = F.softmax(self.linear(y_), dim=-1)
+            y_ = self.linear(y_)
             
         else:
             assert len(trg.size()) == 3
@@ -43,8 +43,8 @@ class TransformerDecoder(nn.Module):
             pos = torch.arange(0, T).unsqueeze(0).repeat(B, 1).to(self.device) 
             trg = self.dropout(((trg.double() @ self.tok_emb.weight.double())* self.scale) + self.pos_emb(pos))
             y_ = self.decoder(trg.float(), src_memory, trg_m, trg_src_m, trg_pm, src_memory_pm)
-            # print('This line okayy')
+            y_ = self.linear(y_)
            
             # y_ = F.softmax(self.linear(y_), dim=-1)
         
-        return self.linear(y_)
+        return y_

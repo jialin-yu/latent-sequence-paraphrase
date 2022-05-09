@@ -15,37 +15,37 @@ module load cuda/11.3
 python run_semi.py \
     --data='quora' \
     --seed=1000 \
-    --un_train_size=100000 \
-    --train_size=100000 \
+    --un_train_size=50000 \
+    --train_size=50000 \
     --semi_lr=0.0002 \
     --semi_max_epoch=30 \
     --fixed_temperature=True \
-    --use_lm=True \
-    --top_k=5 \
+    --use_lm=False \
+    --top_k=10 \
     --beta=0.001 \
 
 python run_semi.py \
     --data='quora' \
     --seed=2000 \
-    --un_train_size=100000 \
-    --train_size=100000 \
+    --un_train_size=50000 \
+    --train_size=50000 \
     --semi_lr=0.0002 \
     --semi_max_epoch=30 \
     --fixed_temperature=True \
-    --use_lm=True \
-    --top_k=5 \
+    --use_lm=False \
+    --top_k=10 \
     --beta=0.001 \
 
 python run_semi.py \
     --data='quora' \
     --seed=3000 \
-    --un_train_size=100000 \
-    --train_size=100000 \
+    --un_train_size=50000 \
+    --train_size=50000 \
     --semi_lr=0.0002 \
     --semi_max_epoch=30 \
     --fixed_temperature=True \
-    --use_lm=True \
-    --top_k=5 \
+    --use_lm=False \
+    --top_k=10 \
     --beta=0.001 \
 
 

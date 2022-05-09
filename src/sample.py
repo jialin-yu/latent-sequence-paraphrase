@@ -58,7 +58,14 @@ def gumbel_softmax_topk_(logits, temperature, topk, hard=True):
     logits_ = torch.zeros_like(logits).scatter(-1, idx, vals).float()
     msk = (logits_ == 0).float()
     logits_[msk == 1] = -float("inf")
-    y_ = F.gumbel_softmax(logits_, temperature, False)
+
+    samples = []
+    for i in range(10):
+        y_s = F.gumbel_softmax(logits, temperature, False)
+        samples.append(y_s.unsqueeze(-1))
+    y_ = torch.mean(torch.cat(samples, dim=-1), dim=-1)
+
+    # y_ = F.gumbel_softmax(logits_, temperature, False)
 
     shape = y_.size()
     _, ind = y_.max(dim=-1)
@@ -108,24 +115,6 @@ def softmax_topk(logits, topk):
     logits_[msk == 1] = -float("inf")
     y = F.softmax(logits_, dim=-1)
     return y
-
-# def gumbel_softmax_topk_(logits, temperature, topk, num_samples):
-#     """
-#     input: [*, n_class]
-#     return: [*, n_class] an one-hot vector
-#     """
-#     samples = []
-#     for i in range(num_samples):
-#         y_s = F.gumbel_softmax(logits, temperature, False)
-#         samples.append(y_s.unsqueeze(-1))
-#     y = torch.mean(torch.cat(samples, dim=-1), dim=-1)
-#     vals, idx = torch.topk(y, topk, dim=-1, sorted=False)
-#     y_ = torch.zeros_like(y).scatter(-1, idx, vals)
-#     msk = (y_ == 0).float()
-#     y_[msk == 1] = -float("inf")
-#     y_ = F.softmax(y_, dim=-1)
-    
-#     return y_
 
 def gumbel_softmax(logits, temperature):
     """

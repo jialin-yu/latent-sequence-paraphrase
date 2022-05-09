@@ -175,14 +175,14 @@ def calculate_bound(pred_set, reference_set, bleu=False, rouge=False, inference=
         lower_self_bleu =  calculate_self_bleu(lower_pred, src_refer)
 
         if (inference):
-            print(f'BLEU-1: {upper_bleu[0]}; BLEU-2: {upper_bleu[1]}; BLEU-3: {upper_bleu[2]}; BLEU-4: {upper_bleu[3]}; and BLEU {upper_bleu[4]} .')
+            print(f'BLEU-1: {upper_bleu[0]}; BLEU-2: {upper_bleu[1]}; BLEU-3: {upper_bleu[2]}; and BLEU-4: {upper_bleu[3]} .')
             print(f'self-BLEU: {upper_self_bleu} and i-BLEU: {upper_i_bleu} .')
         else:
             print(f'{"-"*20} Ground truth upper bound {"-"*20}')
-            print(f'BLEU-1: {upper_bleu[0]}; BLEU-2: {upper_bleu[1]}; BLEU-3: {upper_bleu[2]}; BLEU-4: {upper_bleu[3]}; and BLEU {upper_bleu[4]} .')
+            print(f'BLEU-1: {upper_bleu[0]}; BLEU-2: {upper_bleu[1]}; BLEU-3: {upper_bleu[2]}; and BLEU-4: {upper_bleu[3]} .')
             print(f'self-BLEU: {upper_self_bleu} and i-BLEU: {upper_i_bleu} .')
             print(f'{"-"*20} Random selection lower bound {"-"*20}')
-            print(f'BLEU-1: {lower_bleu[0]}; BLEU-2: {lower_bleu[1]}; BLEU-3: {lower_bleu[2]}; BLEU-4: {lower_bleu[3]}; and BLEU {lower_bleu[4]} .')
+            print(f'BLEU-1: {lower_bleu[0]}; BLEU-2: {lower_bleu[1]}; BLEU-3: {lower_bleu[2]}; and BLEU-4: {lower_bleu[3]} .')
             print(f'self-BLEU: {lower_self_bleu} and i-BLEU: {lower_i_bleu} .')
             print(f'{"-"*40}')
     

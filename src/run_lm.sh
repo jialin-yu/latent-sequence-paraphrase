@@ -12,8 +12,8 @@
 source ../env/bin/activate
 module load cuda/11.3
 
-python run_lm.py \
-    --data='quora' \
+# python run_lm.py \
+#     --data='quora' \
     
 python run_lm.py \
     --data='mscoco' \

@@ -20,7 +20,7 @@ python run_semi.py \
     --semi_lr=0.0002 \
     --semi_max_epoch=30 \
     --fixed_temperature=True \
-    --use_lm=True \
+    --use_lm=False \
     --top_k=5 \
     --beta=0.001 \
 
@@ -32,7 +32,7 @@ python run_semi.py \
     --semi_lr=0.0002 \
     --semi_max_epoch=30 \
     --fixed_temperature=True \
-    --use_lm=True \
+    --use_lm=False \
     --top_k=5 \
     --beta=0.001 \
 
@@ -44,7 +44,7 @@ python run_semi.py \
     --semi_lr=0.0002 \
     --semi_max_epoch=30 \
     --fixed_temperature=True \
-    --use_lm=True \
+    --use_lm=False \
     --top_k=5 \
     --beta=0.001 \
 
