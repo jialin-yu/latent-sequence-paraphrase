@@ -13,11 +13,11 @@ source ../env/bin/activate
 module load cuda/11.3
 
 python run_semi.py \
-    --data='mscoco' \
+    --data='quora' \
     --seed=1000 \
-    --un_train_size=93000 \
-    --train_size=93000 \
-    --semi_lr=0.0001 \
+    --un_train_size=100000 \
+    --train_size=100000 \
+    --semi_lr=0.0002 \
     --semi_max_epoch=30 \
     --fixed_temperature=False \
     --use_lm=True \
@@ -25,11 +25,11 @@ python run_semi.py \
     --beta=1 \
 
 python run_semi.py \
-    --data='mscoco' \
+    --data='quora' \
     --seed=2000 \
-    --un_train_size=93000 \
-    --train_size=93000 \
-    --semi_lr=0.0001 \
+    --un_train_size=100000 \
+    --train_size=100000 \
+    --semi_lr=0.0002 \
     --semi_max_epoch=30 \
     --fixed_temperature=False \
     --use_lm=True \
@@ -37,11 +37,11 @@ python run_semi.py \
     --beta=1 \
 
 python run_semi.py \
-    --data='mscoco' \
+    --data='quora' \
     --seed=3000 \
-    --un_train_size=93000 \
-    --train_size=93000 \
-    --semi_lr=0.0001 \
+    --un_train_size=100000 \
+    --train_size=100000 \
+    --semi_lr=0.0002 \
     --semi_max_epoch=30 \
     --fixed_temperature=False \
     --use_lm=True \
@@ -49,11 +49,11 @@ python run_semi.py \
     --beta=1 \
 
 python run_semi.py \
-    --data='mscoco' \
+    --data='quora' \
     --seed=1000 \
-    --un_train_size=93000 \
+    --un_train_size=100000 \
     --train_size=50000 \
-    --semi_lr=0.0001 \
+    --semi_lr=0.0002 \
     --semi_max_epoch=30 \
     --fixed_temperature=False \
     --use_lm=True \
@@ -61,11 +61,11 @@ python run_semi.py \
     --beta=1 \
 
 python run_semi.py \
-    --data='mscoco' \
+    --data='quora' \
     --seed=2000 \
-    --un_train_size=93000 \
+    --un_train_size=100000 \
     --train_size=50000 \
-    --semi_lr=0.0001 \
+    --semi_lr=0.0002 \
     --semi_max_epoch=30 \
     --fixed_temperature=False \
     --use_lm=True \
@@ -73,11 +73,11 @@ python run_semi.py \
     --beta=1 \
 
 python run_semi.py \
-    --data='mscoco' \
+    --data='quora' \
     --seed=3000 \
-    --un_train_size=93000 \
+    --un_train_size=100000 \
     --train_size=50000 \
-    --semi_lr=0.0001 \
+    --semi_lr=0.0002 \
     --semi_max_epoch=30 \
     --fixed_temperature=False \
     --use_lm=True \
@@ -85,11 +85,11 @@ python run_semi.py \
     --beta=1 \
 
 python run_semi.py \
-    --data='mscoco' \
+    --data='quora' \
     --seed=1000 \
     --un_train_size=50000 \
     --train_size=50000 \
-    --semi_lr=0.0001 \
+    --semi_lr=0.0002 \
     --semi_max_epoch=30 \
     --fixed_temperature=False \
     --use_lm=True \
@@ -97,11 +97,11 @@ python run_semi.py \
     --beta=1 \
 
 python run_semi.py \
-    --data='mscoco' \
+    --data='quora' \
     --seed=2000 \
     --un_train_size=50000 \
     --train_size=50000 \
-    --semi_lr=0.0001 \
+    --semi_lr=0.0002 \
     --semi_max_epoch=30 \
     --fixed_temperature=False \
     --use_lm=True \
@@ -109,11 +109,11 @@ python run_semi.py \
     --beta=1 \
 
 python run_semi.py \
-    --data='mscoco' \
+    --data='quora' \
     --seed=3000 \
     --un_train_size=50000 \
     --train_size=50000 \
-    --semi_lr=0.0001 \
+    --semi_lr=0.0002 \
     --semi_max_epoch=30 \
     --fixed_temperature=False \
     --use_lm=True \
@@ -121,11 +121,11 @@ python run_semi.py \
     --beta=1 \
 
 python run_semi.py \
-    --data='mscoco' \
+    --data='quora' \
     --seed=1000 \
-    --un_train_size=93000 \
+    --un_train_size=100000 \
     --train_size=20000 \
-    --semi_lr=0.0001 \
+    --semi_lr=0.0002 \
     --semi_max_epoch=30 \
     --fixed_temperature=False \
     --use_lm=True \
@@ -133,11 +133,11 @@ python run_semi.py \
     --beta=1 \
 
 python run_semi.py \
-    --data='mscoco' \
+    --data='quora' \
     --seed=2000 \
-    --un_train_size=93000 \
+    --un_train_size=100000 \
     --train_size=20000 \
-    --semi_lr=0.0001 \
+    --semi_lr=0.0002 \
     --semi_max_epoch=30 \
     --fixed_temperature=False \
     --use_lm=True \
@@ -145,11 +145,11 @@ python run_semi.py \
     --beta=1 \
 
 python run_semi.py \
-    --data='mscoco' \
+    --data='quora' \
     --seed=3000 \
-    --un_train_size=93000 \
+    --un_train_size=100000 \
     --train_size=20000 \
-    --semi_lr=0.0001 \
+    --semi_lr=0.0002 \
     --semi_max_epoch=30 \
     --fixed_temperature=False \
     --use_lm=True \
@@ -157,11 +157,11 @@ python run_semi.py \
     --beta=1 \
 
 python run_semi.py \
-    --data='mscoco' \
+    --data='quora' \
     --seed=1000 \
     --un_train_size=20000 \
     --train_size=20000 \
-    --semi_lr=0.0001 \
+    --semi_lr=0.0002 \
     --semi_max_epoch=30 \
     --fixed_temperature=False \
     --use_lm=True \
@@ -169,11 +169,11 @@ python run_semi.py \
     --beta=1 \
 
 python run_semi.py \
-    --data='mscoco' \
+    --data='quora' \
     --seed=2000 \
     --un_train_size=20000 \
     --train_size=20000 \
-    --semi_lr=0.0001 \
+    --semi_lr=0.0002 \
     --semi_max_epoch=30 \
     --fixed_temperature=False \
     --use_lm=True \
@@ -181,11 +181,11 @@ python run_semi.py \
     --beta=1 \
 
 python run_semi.py \
-    --data='mscoco' \
+    --data='quora' \
     --seed=3000 \
     --un_train_size=20000 \
     --train_size=20000 \
-    --semi_lr=0.0001 \
+    --semi_lr=0.0002 \
     --semi_max_epoch=30 \
     --fixed_temperature=False \
     --use_lm=True \
