@@ -21,7 +21,9 @@ from torchtext.vocab import vocab
 from collections import Counter, OrderedDict
 from sklearn.utils import shuffle
 from nltk.translate.bleu_score import corpus_bleu
+# from rouge import Rouge
 
+# rouge_evaluator = Rouge()
 
 #################################################
 ############## Process Raw Data   ###############
@@ -187,17 +189,33 @@ def calculate_bound(pred_set, reference_set, bleu=False, rouge=False, inference=
             print(f'{"-"*40}')
     
     if (rouge):
-
+        
+        
         print(f'{"-"*20} Calculate ROUGE score {"-"*20}')
         upper_pred = [stringify(s) for s in pred_set]
         refer = [stringify(s[1]) for s in reference_set]
+        # refer = [[stringify(s_) for s_ in s[1:]] for s in reference_set]
 
-        upper_rouge = rouge_metric.compute(predictions=upper_pred, references=refer)
+        # print(refer[0])
+
+        # [[s_ for s_ in s[1:]] for s in reference_set]
+
+        upper_rouge = rouge_metric.compute(predictions=upper_pred, references=refer, use_stemmer=True)
+        # upper_rouge = rouge_evaluator.get_scores(upper_pred, refer, avg=True)
 
         lower_pred = [stringify(s) for s in shuffle_pred_set]
         
-        lower_rouge = rouge_metric.compute(predictions=lower_pred, references=refer)
+        lower_rouge = rouge_metric.compute(predictions=lower_pred, references=refer, use_stemmer=True)
+        # lower_rouge = rouge_evaluator.get_scores(lower_pred, refer, avg=True)
         
+        # if (inference):
+        #     print(f'ROUGE-1 score is {upper_rouge["rouge-1"]["f"]}, ROUGE-2 score is {upper_rouge["rouge-2"]["f"]}, and ROUGE-L score is {upper_rouge["rouge-l"]["f"]}.')
+        # else:
+        #     print(f'{"-"*20} Ground truth upper bound {"-"*20}')
+        #     print(f'ROUGE-1 score is {upper_rouge["rouge-1"]["f"]}, ROUGE-2 score is {upper_rouge["rouge-2"]["f"]}, and ROUGE-L score is {upper_rouge["rouge-l"]["f"]}.')
+        #     print(f'{"-"*20} Random selection lower bound {"-"*20}')
+        #     print(f'ROUGE-1 score is {lower_rouge["rouge-1"]["f"]}, ROUGE-2 score is {lower_rouge["rouge-2"]["f"]}, and ROUGE-L score is {lower_rouge["rouge-l"]["f"]}.')
+
         if (inference):
             print(f'ROUGE-1 score is {upper_rouge["rouge1"].mid.fmeasure}, ROUGE-2 score is {upper_rouge["rouge2"].mid.fmeasure}, and ROUGE-L score is {upper_rouge["rougeL"].mid.fmeasure}.')
         else:
@@ -205,7 +223,6 @@ def calculate_bound(pred_set, reference_set, bleu=False, rouge=False, inference=
             print(f'ROUGE-1 score is {upper_rouge["rouge1"].mid.fmeasure}, ROUGE-2 score is {upper_rouge["rouge2"].mid.fmeasure}, and ROUGE-L score is {upper_rouge["rougeL"].mid.fmeasure}.')
             print(f'{"-"*20} Random selection lower bound {"-"*20}')
             print(f'ROUGE-1 score is {lower_rouge["rouge1"].mid.fmeasure}, ROUGE-2 score is {lower_rouge["rouge2"].mid.fmeasure}, and ROUGE-L score is {lower_rouge["rougeL"].mid.fmeasure}.')
-
 
 def gumble_search(pred_set, pred_samples, reference_set):
     ''''

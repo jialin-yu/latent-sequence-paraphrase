@@ -64,7 +64,7 @@ class Trainer(object):
         print(f'Set model as total {self._count_parameters(self.model)} trainable parameters')
         print(f'{"-"*40}')
     
-    def main_inference(self, dataloader, test_split, interpolate_latent=True):
+    def main_inference(self, dataloader, test_split, interpolate_latent=False):
         self.model.eval()
 
         print(f'{"-"*20} Perform inference {"-"*20}')
@@ -134,15 +134,18 @@ class Trainer(object):
     
     def _latent_interpolate_(self, dataloader, number_samples, number):
         sample_idx = []
+        counter = 0
         for _, (src, _) in enumerate(tqdm(dataloader)):
                 for index, _ in enumerate(src):
                     temp = []
                     for _ in range(number_samples):
-                        trg_, _, _ = self.model.unsupervised_reconstruction(src[index].unsqueeze(0), 0.01, 10)
+                        trg_, _, _ = self.model.unsupervised_reconstruction(src[index].unsqueeze(0), 0.1, 10)
                         temp.append(trg_.squeeze().cpu())
                     sample_idx.append(temp)
-                if len(sample_idx) == number:
-                    return sample_idx
+                    counter += 1
+                    if counter == number:
+                        # print(sample_idx[0])
+                        return sample_idx
 
     
     def main_seq2seq(self):
@@ -514,8 +517,9 @@ class Trainer(object):
             assert un_train_size <= self.configs.quora_train_max
             lm_size = self.configs.quora_train_max
             sentence_pairs = process_quora(self.configs.quora_fp)
-            sentence_pairs = shuffle(sentence_pairs, random_state=1234)
+            # sentence_pairs = shuffle(sentence_pairs, random_state=1234)
             train_valid_split, test_split = sentence_pairs[:-test_size], sentence_pairs[-test_size:]
+            train_valid_split = shuffle(train_valid_split, random_state=1234)
         if data == 'mscoco':
             assert un_train_size <= self.configs.mscoco_train_max
             lm_size = self.configs.mscoco_train_max

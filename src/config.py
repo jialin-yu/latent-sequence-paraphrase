@@ -8,15 +8,15 @@ class Configs(object):
         self.mscoco_fp_test = '../.data/annotations/captions_val2017.json'
         
         self.quora_max_len = 20
-        self.quora_train_max = 80000
-        self.quora_valid = 10000
-        self.quora_test = 10000
+        self.quora_train_max = 100000
+        self.quora_valid = 4000
+        self.quora_test = 20000
         self.qu_batch_size = 512
         
         self.mscoco_max_len = 20
-        self.mscoco_train_max = 100000
-        self.mscoco_valid = 5000
-        self.mscoco_test = 5000
+        self.mscoco_train_max = 93000
+        self.mscoco_valid = 4000
+        self.mscoco_test = 20000
         self.ms_batch_size = 512
 
         self.lm_seed = 1234

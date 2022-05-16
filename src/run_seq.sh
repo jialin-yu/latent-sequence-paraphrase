@@ -12,58 +12,12 @@
 source ../env/bin/activate
 module load cuda/11.3
 
-
-# python run_seq.py \
-#     --data='quora' \
-#     --seed=1000 \
-#     --un_train_size=100000 \
-#     --train_size=100000 \
-#     --seq2seq_lr=0.0002 \
-#     --seq2seq_max_epoch=30 \
-#     --seq2seq=True \
-
-# python run_seq.py \
-#     --data='quora' \
-#     --seed=2000 \
-#     --un_train_size=100000 \
-#     --train_size=100000 \
-#     --seq2seq_lr=0.0002 \
-#     --seq2seq_max_epoch=30 \
-#     --seq2seq=True \
-
-# python run_seq.py \
-#     --data='quora' \
-#     --seed=3000 \
-#     --un_train_size=100000 \
-#     --train_size=100000 \
-#     --seq2seq_lr=0.0002 \
-#     --seq2seq_max_epoch=30 \
-#     --seq2seq=True \
-
 python run_seq.py \
     --data='mscoco' \
-    --seed=1000 \
-    --un_train_size=93000 \
-    --train_size=93000 \
-    --seq2seq_lr=0.0001 \
-    --seq2seq_max_epoch=30 \
-    --seq2seq=True \
-
-python run_seq.py \
-    --data='mscoco' \
-    --seed=2000 \
-    --un_train_size=93000 \
-    --train_size=93000 \
-    --seq2seq_lr=0.0001 \
-    --seq2seq_max_epoch=30 \
-    --seq2seq=True \
-
-python run_seq.py \
-    --data='mscoco' \
-    --seed=3000 \
-    --un_train_size=93000 \
-    --train_size=93000 \
-    --seq2seq_lr=0.0001 \
-    --seq2seq_max_epoch=30 \
+    --seed=7000 \
+    --un_train_size=10000 \
+    --train_size=10000 \
+    --seq2seq_lr=0.0002 \
+    --seq2seq_max_epoch=3 \
     --seq2seq=True \
 

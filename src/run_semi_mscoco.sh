@@ -5,7 +5,7 @@
 #SBATCH --mem=20g
 #SBATCH -p res-gpu-small
 #SBATCH --qos=long-high-prio
-#SBATCH --job-name=test_env
+#SBATCH --job-name=semi-mscoco
 #SBATCH --time=7-0
 #SBATCH --nodelist=gpu10
 
