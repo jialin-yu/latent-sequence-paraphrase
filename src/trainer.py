@@ -516,8 +516,10 @@ class Trainer(object):
         if data == 'quora':
             assert un_train_size <= self.configs.quora_train_max
             lm_size = self.configs.quora_train_max
-            sentence_pairs = process_quora(self.configs.quora_fp)
-            # sentence_pairs = shuffle(sentence_pairs, random_state=1234)
+            # sentence_pairs = process_quora(self.configs.quora_fp)
+            # sentence_pairs = process_parabank(self.configs.parabank_fp)
+            sentence_pairs = process_para_nmt(self.configs.para_nmt_fp)
+            sentence_pairs = shuffle(sentence_pairs, random_state=1234)
             train_valid_split, test_split = sentence_pairs[:-test_size], sentence_pairs[-test_size:]
             train_valid_split = shuffle(train_valid_split, random_state=1234)
         if data == 'mscoco':
@@ -525,7 +527,7 @@ class Trainer(object):
             lm_size = self.configs.mscoco_train_max
             train_test_split = process_mscoco(self.configs.mscoco_fp_train)
             valid_split = process_mscoco(self.configs.mscoco_fp_test)
-            # train_test_split = shuffle(train_test_split, random_state=1234)
+            train_test_split = shuffle(train_test_split, random_state=1234)
             test_split = train_test_split[-test_size:]
             train_valid_split = valid_split + train_test_split[:-test_size]
             train_valid_split = shuffle(train_valid_split, random_state=1234)
@@ -544,21 +546,20 @@ class Trainer(object):
         train_idx = train_valid_idx[:train_size]
         valid_idx = train_valid_idx[-valid_size:]
 
-        # train_valid_idx = shuffle(train_valid_idx, random_state=1234)
         un_train_idx = train_valid_idx[:un_train_size]
         un_train_idx = shuffle(un_train_idx, random_state=1234)
 
         if data == 'quora':
-            lm_dl = DataLoader(lm_idx, batch_size=self.configs.qu_batch_size, shuffle=True, collate_fn=self._batchify)
-            un_dl = DataLoader(un_train_idx, batch_size=self.configs.qu_batch_size, shuffle=True, collate_fn=self._batchify)
-            train_dl = DataLoader(train_idx, batch_size=self.configs.qu_batch_size, shuffle=True, collate_fn=self._batchify)
+            lm_dl = DataLoader(lm_idx, batch_size=self.configs.qu_batch_size, shuffle=False, collate_fn=self._batchify)
+            un_dl = DataLoader(un_train_idx, batch_size=self.configs.qu_batch_size, shuffle=False, collate_fn=self._batchify)
+            train_dl = DataLoader(train_idx, batch_size=self.configs.qu_batch_size, shuffle=False, collate_fn=self._batchify)
             valid_dl = DataLoader(valid_idx, batch_size=self.configs.qu_batch_size, shuffle=False, collate_fn=self._batchify)
             test_dl = DataLoader(test_idx, batch_size=self.configs.qu_batch_size, shuffle=False, collate_fn=self._batchify)
 
         if data == 'mscoco':
-            lm_dl = DataLoader(lm_idx, batch_size=self.configs.ms_batch_size, shuffle=True, collate_fn=self._batchify)
-            un_dl = DataLoader(un_train_idx, batch_size=self.configs.ms_batch_size, shuffle=True, collate_fn=self._batchify)
-            train_dl = DataLoader(train_idx, batch_size=self.configs.ms_batch_size, shuffle=True, collate_fn=self._batchify)
+            lm_dl = DataLoader(lm_idx, batch_size=self.configs.ms_batch_size, shuffle=False, collate_fn=self._batchify)
+            un_dl = DataLoader(un_train_idx, batch_size=self.configs.ms_batch_size, shuffle=False, collate_fn=self._batchify)
+            train_dl = DataLoader(train_idx, batch_size=self.configs.ms_batch_size, shuffle=False, collate_fn=self._batchify)
             valid_dl = DataLoader(valid_idx, batch_size=self.configs.ms_batch_size, shuffle=False, collate_fn=self._batchify)
             test_dl = DataLoader(test_idx, batch_size=self.configs.ms_batch_size, shuffle=False, collate_fn=self._batchify)
 

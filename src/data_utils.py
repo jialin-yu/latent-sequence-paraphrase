@@ -47,6 +47,41 @@ def process_quora(file_path_read):
     print(f'Read {len(sentence_pairs)} pairs from original {len(lines)} pairs.')
     return sentence_pairs  
 
+def process_parabank(file_path_read):   
+    print(f'Read parabank data from path: {file_path_read}...')
+    
+    with open(file_path_read, 'r') as f:
+        lines = f.readlines() # no need to ignore header line
+    
+    sentence_pairs = []
+    for l in tqdm(lines):
+        if len(l.split('\t') ) != 2: # ignore error format
+            continue
+        q1, q2 = l.split('\t')
+        if len(q1) > 1 and len(q2) > 1:          
+            sentence_pairs.append((tokenize(q1), tokenize(q2)))
+
+    print(f'Read {len(sentence_pairs)} pairs from original {len(lines)} pairs.')
+    return sentence_pairs 
+
+def process_para_nmt(file_path_read):   
+    print(f'Read para_nmt data from path: {file_path_read}...')
+    
+    with open(file_path_read, 'r') as f:
+        lines = f.readlines() # no need to ignore header line
+    
+    sentence_pairs = []
+    for l in tqdm(lines):
+        if len(l.split('\t') ) != 3: # ignore error format
+            continue
+        q1, q2, score = l.split('\t')
+        if len(q1.split()) > 1 and len(q2.split()) > 1: 
+            # if float(score) > 0.3 and float(score) < 0.7:        
+            sentence_pairs.append((tokenize(q1), tokenize(q2)))
+
+    print(f'Read {len(sentence_pairs)} pairs from original {len(lines)} pairs.')
+    return sentence_pairs  
+
 def process_mscoco(file_path_read):   
     print(f'Read mscoco data from path: {file_path_read}...')
     

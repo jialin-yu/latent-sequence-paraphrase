@@ -4,6 +4,8 @@ class Configs(object):
     def __init__(self, **kwargs):
         
         self.quora_fp = '../.data/quora_duplicate_questions.tsv'
+        self.para_nmt_fp = '../.data/para-nmt-50m-clean.txt'
+        self.parabank_fp = '../.data/parabank-1.0-small-diverse/parabank.5m.tsv'
         self.mscoco_fp_train = '../.data/annotations/captions_train2017.json'
         self.mscoco_fp_test = '../.data/annotations/captions_val2017.json'
         
@@ -11,7 +13,7 @@ class Configs(object):
         self.quora_train_max = 100000
         self.quora_valid = 4000
         self.quora_test = 20000
-        self.qu_batch_size = 512
+        self.qu_batch_size = 64
         
         self.mscoco_max_len = 20
         self.mscoco_train_max = 93000
@@ -42,6 +44,10 @@ class Configs(object):
         self.inf = float('inf')
 
         self.grad_clip = 1
+
+        self.top_k = 10
+        self.use_lm = None
+        self.beta = None
 
         self.device = None
 
